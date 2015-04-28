@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="lib" path="commons-primitives-1.0.jar"/>
+	<classpathentry kind="lib" path="log4j-1.2.14.jar"/>
+	<classpathentry kind="lib" path="umass-nlp-1.0-SNAPSHOT.jar"/>
+	<classpathentry kind="lib" path="nd4j-api-0.0.3.5.5.2.jar"/>
+	<classpathentry kind="lib" path="nd4j-jblas-0.0.3.5.5.2.jar"/>
+	<classpathentry kind="lib" path="nd4j-jcublas-6.5-0.0.3.5.5.2.jar"/>
+	<classpathentry kind="lib" path="jmatio.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
