@@ -9,18 +9,21 @@ A Neural Tensor Network for Knowledge Base Completion as described in the paper 
   - based on ND4j (http://nd4j.org/) as computation libary for linear algebra (as alternative to numpy and scipy in Python)
   - based on LBFGS Optimization based on https://github.com/aria42/nlp-utils
 
-Additional Information / resources:
-Architecture of NTN: http://fs2.directupload.net/images/150428/hjxlxzom.jpg
-Classdiagram:
+Additional information / resources:
+- Architecture of NTN: http://fs2.directupload.net/images/150428/hjxlxzom.jpg
+- Classdiagram:
+- 
+Main classes:
+Run_NTN: start the project
+NTN: Neural Tensor Network with Cost/Loss function
+Data_Factory: responsible for loading, providing and managing data
 
 Accuracy with data from Socher et. al 2013: Freebase: Wordbase
 
-Roadmap:
+Roadmap / next steps:
+- Code review
 - Maven integration
 - Integration in DL4j Framework
 - Multilingual support
  - Multilingual training data: spanish and german tripples and word vectors
 - Improvements and Experiments
-
-
-
