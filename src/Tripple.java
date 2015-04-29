@@ -2,6 +2,7 @@
 
 import java.util.Random;
 
+import org.apache.commons.math3.random.RandomGenerator;
 import org.nd4j.linalg.api.ndarray.INDArray;
 
 public class Tripple {
