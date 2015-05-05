@@ -51,5 +51,13 @@ public class Util {
 		double[] doublearray = arr.data().asDouble();
 		return doublearray;
 	}
-
+	public INDArray getDenseMatrixWithSparseMatrixCRSData(INDArray values, INDArray entitylist, INDArray rows, int rowSize, int columns){
+		INDArray denseMatrix = Nd4j.zeros(rowSize,columns);
+		for (int i = 0; i < entitylist.length(); i++) {
+			denseMatrix.put(i, entitylist.getInt(i), Nd4j.ones(1));
+		}
+		//System.out.println("denseMatrix: "+denseMatrix);
+		return denseMatrix;
+	}
+	
 }

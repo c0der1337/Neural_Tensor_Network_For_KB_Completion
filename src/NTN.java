@@ -5,6 +5,7 @@ import java.util.HashMap;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.indexing.NDArrayIndex;
 
 import edu.umass.nlp.optimize.IDifferentiableFn;
 import edu.umass.nlp.utils.BasicPair;
@@ -15,6 +16,7 @@ public class NTN implements IDifferentiableFn {
 	int embeddingSize; 			// 100 size of a single word vector
 	int numberOfEntities;
 	int numberOfRelations;
+	int numOfWords; 			// number of word vectors
 	int batchSize; 				// training batch size
 	int sliceSize;				// 3 number of slices in tensor
 	int activation_function;	// 0 - tanh, 1 - sigmoid
@@ -27,23 +29,20 @@ public class NTN implements IDifferentiableFn {
 	HashMap<Integer, INDArray> v;
 	HashMap<Integer, INDArray> b;
 	HashMap<Integer, INDArray> u;
+	INDArray wordvectors;
 	
-	// For ComputeAt Implementation
-
+	int update;							
 	DataFactory tbj;
 
 	NTN(	int embeddingSize, 			// 100 size of a single word vector
 			int numberOfEntities,		
 			int numberOfRelations,		// number of different relations
+			int numberOfWords,			// number of word vectors
 			int batchSize, 				// training batch size original: 20.000
 			int sliceSize, 				// 3 number of slices in tensor
 			int activation_function,	// 0 - tanh, 1 - sigmoid
+			DataFactory tbj,			// data management unit
 			float lamda){  				// regulariization parameter
-		
-		
-		//Initialize word vectors randomly with each element in the range [-r, r] 
-		
-		//Load Word Vectors
 		
 		// Initialize the parameters of the network
 		w = new HashMap<Integer, INDArray>(); 	
@@ -57,24 +56,35 @@ public class NTN implements IDifferentiableFn {
 		this.batchSize = batchSize;
 		this.sliceSize = sliceSize;
 		this.lamda = lamda;
+		this.numOfWords = numberOfWords;
+		update = 0;
+		double r = 1 / Math.sqrt(2*embeddingSize); // r is used for a better initialization of w
 		
 		for (int i = 0; i < numberOfRelations; i++) {
-			w.put(i, Nd4j.rand(new int[]{embeddingSize,embeddingSize,sliceSize}));
-			// TODO better initalization of w
+			w.put(i, Nd4j.rand(new int[]{embeddingSize,embeddingSize,sliceSize}).mul(2*r-r));
 			v.put(i, Nd4j.zeros(2*embeddingSize,sliceSize));
 			b.put(i, Nd4j.zeros(1,sliceSize));
 			u.put(i, Nd4j.ones(sliceSize,1));				
 		}
 		
+		// Initialize WordVectors via loaded Vectors
+		wordvectors = tbj.getWordVectorMaxtrixLoaded();
+		// For random wordVector initialization:
+		//wordvectors = Nd4j.rand(embeddingSize,numberOfWords).muli(0.0001);
+		
 		// Unroll the parameters into a vector		
-		theta_inital = parametersToStack(w, v, b, u);		
+		theta_inital = parametersToStack(w, v, b, u, wordvectors);		
 		dimension_for_minimizer = theta_inital.data().asDouble().length;
 		
 	}
-	
+	/**
+	 * Returns the cost/loss for the current paramters and return optimized paramters 
+	 * @param  _theta  	an double array with the flattened paramters of the network
+	 * @return      	an IPair that contains of cost and optimized network paramters
+	 * @see         ...
+	 */
 	@Override
-	public IPair<Double, double[]> computeAt(double[] _theta) {
-		// IN USE, Cost / Loss function 
+	public IPair<Double, double[]> computeAt(double[] _theta) {		
 		//load input paramter(theta) into java variables for further computations
 		stackToParameters(new Util().convertDoubleArrayToFlattenedINDArray(_theta));
 		
@@ -82,249 +92,295 @@ public class NTN implements IDifferentiableFn {
 		INDArray entity_vectors = Nd4j.zeros(embeddingSize, numberOfEntities);
 		INDArray entity_vectors_grad = Nd4j.zeros(embeddingSize, numberOfEntities);
 		
-		//Assign entity vectors to be the mean of word vectors involved
-		
-		entity_vectors= tbj.createVectorsForEachEntityByWordVectors(entity_vectors);
-		
-		//TODO Add the word vectors to the tbj - necessay?
-		
+		//Assign entity vectors to be the mean of word vectors involved		
+		entity_vectors= tbj.createVectorsForEachEntityByWordVectors();
 		
 		// Initialize cost as zero
 		Float cost = 0F;
 		
-		//use hasmaps to store parameter gradients for each relation
+		// Use hashmaps to store parameter gradients for each relation
 		HashMap<Integer, INDArray> w_grad = new HashMap<Integer, INDArray>();
 		HashMap<Integer, INDArray> v_grad = new HashMap<Integer, INDArray>();
 		HashMap<Integer, INDArray> u_grad = new HashMap<Integer, INDArray>();
 		HashMap<Integer, INDArray> b_grad = new HashMap<Integer, INDArray>();
 		
 		for (int r = 0; r < numberOfRelations; r++) {			
-			//Make a list of examples / tripples for the ith relation
+			// Make a list of examples / tripples for the ith relation
 			ArrayList<Tripple> tripplesOfRelationR = tbj.getBatchJobTripplesOfRelation(r);
+			//System.out.println(tripplesOfRelationR.size()+" Trainingsexample for relation r="+r);
 			
-			//Check if there are trainingsexample availabe for this relation, if not, skip
-			System.out.println(tripplesOfRelationR.size()+" Trainingsexample for relation r="+r);
-			//Get entity lists for examples of ith relation
-			INDArray wordvectors_for_entities1 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
-			INDArray wordvectors_for_entities2 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
-			INDArray wordvectors_for_entities3 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});		
-			INDArray wordvectors_for_entities1_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
-			INDArray wordvectors_for_entities2_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+			// Initlize entity and rel index lists
+			INDArray e1 = tbj.getEntitiy1IndexNumbers(tripplesOfRelationR);
+			INDArray e2 = tbj.getEntitiy2IndexNumbers(tripplesOfRelationR);
+			INDArray rel = tbj.getRelIndexNumbers(tripplesOfRelationR);
+			INDArray e3 = tbj.getEntitiy3IndexNumbers(tripplesOfRelationR);
+			//System.out.println("e3: "+e3);
 			
-			// Get entity vectors for examples of the ith relation
+			// Initilize entity vector lists with zeros
+			INDArray entityVectors_e1 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+			INDArray entityVectors_e2 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+			INDArray entityVectors_e3 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});		
+			INDArray entityVectors_e1_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+			INDArray entityVectors_e2_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+			INDArray e1_neg = Nd4j.zeros(e1.shape());
+			INDArray e2_neg = Nd4j.zeros(e1.shape());
+			
+			// Get only entity vectors of training examples of the this / rth relation
 			for (int j = 0; j < tripplesOfRelationR.size(); j++) {
 				Tripple tripple = tripplesOfRelationR.get(j);
-				wordvectors_for_entities1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
-				wordvectors_for_entities2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
-				wordvectors_for_entities3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corrupt()));
+				entityVectors_e1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
+				entityVectors_e2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
+				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corrupt()));
 			}
 			//arrayInfo(wordvectors_for_entities2, "wordvectors_for_entities2");
-			// Choose entity vectors and lists based on random
+			
+			// Choose entity vectors for negative training example based on random
 			if (Math.random()>0.5) {
-				wordvectors_for_entities1_neg = wordvectors_for_entities1;
-				wordvectors_for_entities2_neg = wordvectors_for_entities3;
+				entityVectors_e1_neg = entityVectors_e1;
+				entityVectors_e2_neg = entityVectors_e3;
+				e1_neg = e1;
+				e2_neg = e3;
 			}else{
-				wordvectors_for_entities1_neg = wordvectors_for_entities3;
-				wordvectors_for_entities2_neg = wordvectors_for_entities2;
+				entityVectors_e1_neg = entityVectors_e3;
+				entityVectors_e2_neg = entityVectors_e2;
+				e1_neg = e3;
+				e2_neg = e2;
 			}
 			//arrayInfo(wordvectors_for_entities1, "wordvectors_for_entities1");
 				
 			// Initialize pre-activations of the tensor network as matrix of zeros
-			//System.out.println("Number of training tripples for this relation: "+tripplesOfRelationR.size());
 			INDArray preactivation_pos = Nd4j.zeros(sliceSize, tripplesOfRelationR.size());
 			INDArray preactivation_neg = Nd4j.zeros(sliceSize, tripplesOfRelationR.size());
 	
-			//Add contribution of term containing W
+			// Add contribution of W
 			INDArray wOfThisRelation = w.get(r);
 			for (int slice = 0; slice < sliceSize; slice++) {
 				INDArray sliceOfW = new Util().getSliceOfaTensor(wOfThisRelation, slice);		
-				INDArray dotproduct = sliceOfW.mmul(wordvectors_for_entities2);
-				INDArray dotproduct_neg = sliceOfW.mmul(wordvectors_for_entities2_neg);
-				INDArray result = Nd4j.sum(wordvectors_for_entities1.mul(dotproduct), 0);
-				INDArray result_neg = Nd4j.sum(wordvectors_for_entities1_neg.mul(dotproduct_neg), 0);
+				INDArray dotproduct = sliceOfW.mmul(entityVectors_e2);
+				INDArray dotproduct_neg = sliceOfW.mmul(entityVectors_e2_neg);
+				INDArray result = Nd4j.sum(entityVectors_e1.mul(dotproduct), 0);
+				INDArray result_neg = Nd4j.sum(entityVectors_e1_neg.mul(dotproduct_neg), 0);
 				preactivation_pos.putRow(slice, result);
 				preactivation_neg.putRow(slice, result_neg);
 			}
-			//Add contribution of terms containing V and b
-			INDArray bOfThisRelation_T = b.get(r).transpose();
+			
+			// Add contribution of V
 			INDArray vOfThisRelation_T= v.get(r).transpose();
-			INDArray vstack = Nd4j.vstack(wordvectors_for_entities1, wordvectors_for_entities2);	
+			INDArray vstack = Nd4j.vstack(entityVectors_e1, entityVectors_e2);	
 			INDArray dotproduct = vOfThisRelation_T.mmul(vstack);;
-			INDArray dotproduct_neg = vOfThisRelation_T.mmul(Nd4j.vstack(wordvectors_for_entities1_neg, wordvectors_for_entities2_neg));
-			INDArray temp = dotproduct.addColumnVector(bOfThisRelation_T);
+			INDArray dotproduct_neg = vOfThisRelation_T.mmul(Nd4j.vstack(entityVectors_e1_neg, entityVectors_e2_neg));
+			
+			// Add contribution of B
+			INDArray bOfThisRelation_T = b.get(r).transpose();
+			INDArray temp = dotproduct.addColumnVector(bOfThisRelation_T);	
 			preactivation_pos = preactivation_pos.add(temp);
 			preactivation_neg = preactivation_neg.add(dotproduct_neg.addColumnVector(bOfThisRelation_T));
 			
 			// Apply the activation function
-			INDArray activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_pos));
-			INDArray activation_neg = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_neg));			
+			INDArray z_activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_pos));
+			INDArray z_activation_neg = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_neg));			
 			//System.out.println("activation: " +activation_pos);
 			
 			// Calculate scores for positive and negative examples
-			INDArray score_pos = u.get(r).transpose().mmul(activation_pos);
-			INDArray score_neg = u.get(r).transpose().mmul(activation_neg);
+			INDArray score_pos = u.get(r).transpose().mmul(z_activation_pos);
+			INDArray score_neg = u.get(r).transpose().mmul(z_activation_neg);
 			//System.out.println("score_pos: "+score_pos);
 			//System.out.println("score_neg: "+score_neg);
 	
 			//Filter for training examples, (that already predicted correct and dont need to be in account for further optimization of the paramters)			
-			INDArray wrong_filter = Nd4j.ones(score_pos.columns(),1);
+			INDArray indx = Nd4j.ones(score_pos.columns(),1);
 			//arrayInfo(wrong_filter, "wrong_filter");
-			
-			//System.out.println("");
 			for (int i = 0; i < score_pos.columns(); i++) {
 				//System.out.println("score pos: " + score_pos.getRow(0).getFloat(i)+1 +" > "+score_neg.getRow(0).getFloat(i));
 				if (score_pos.getRow(0).getFloat(i)+1 > score_neg.getRow(0).getFloat(i)) {
-					wrong_filter.put(i,0, 1.0);
+					indx.put(i,0, 1.0);
+					//cost2 = cost2 + score_pos.getRow(0).getFloat(i)+1 - score_neg.getRow(0).getFloat(i);
 				}else{
-					wrong_filter.put(i,0, 0.0);
+					indx.put(i,0, 0.0);
 				}
 			}
-			//System.out.println("wrong filter: "+wrong_filter);
+			//System.out.println("filter: "+indx);
 			
 			//Add max-margin term to the cost
-			//System.out.println("1: "+ Nd4j.sum(score_pos.sub(score_neg.add(1))));
-			//System.out.println("2: "+ Nd4j.sum((score_pos.sub(score_neg)).add(Nd4j.ones(1,score_pos.columns()))));
-			cost = Nd4j.sum(wrong_filter.mul((score_pos.sub(score_neg)).add(Nd4j.ones(1,score_pos.columns())))).getFloat(0);
-			//System.out.println("cost: " + cost);
+			cost = cost + Nd4j.sum(indx.mul(score_pos.sub(score_neg).add(1))).getFloat(0);
+			update = update + Nd4j.sum(indx).getInt(0);
 			
-			//Initialize 'W[i]' and 'V[i]' gradients as matrix of zero
+			//Initialize W and V gradients as matrix of zero
 			w_grad.put(r, Nd4j.zeros(new int[]{embeddingSize,embeddingSize,sliceSize}));
 			v_grad.put(r, Nd4j.zeros(2*embeddingSize,sliceSize));
 			
 			//Number of examples contributing to error
-			int numOfWrongExamples = Nd4j.sum(wrong_filter).getInt(0);
+			int numOfWrongExamples = Nd4j.sum(indx).getInt(0);
 			//System.out.println("numOfWrongExamples: "+numOfWrongExamples);
+
+			// For filtering matrixes, first get array with columns where indx is 1
+			int[] columns = new int[numOfWrongExamples];
+			int counter=0;
+			for (int i = 0; i < indx.length(); i++) {
+				if(indx.getInt(i) == 1){
+					columns[counter] = i;
+					counter++;
+				}
+			}
 			
-			//Filter matrices using 'wrong_filter'		
-			activation_pos = activation_pos.mulRowVector(wrong_filter);
-			activation_neg = activation_neg.mulRowVector(wrong_filter);
-			INDArray wordvectors_for_entities1_rel = wordvectors_for_entities1.mulRowVector(wrong_filter);
-			INDArray wordvectors_for_entities2_rel = wordvectors_for_entities2.mulRowVector(wrong_filter);
-			INDArray wordvectors_for_entities1_rel_neg = wordvectors_for_entities1_neg.mulRowVector(wrong_filter);
-			INDArray wordvectors_for_entities2_rel_neg = wordvectors_for_entities2_neg.mulRowVector(wrong_filter);
+			z_activation_pos = z_activation_pos.getColumns(columns);
+			z_activation_neg = z_activation_neg.getColumns(columns);
+			INDArray entVecE1Rel = entityVectors_e1.getColumns(columns);
+			INDArray entVecE2Rel = entityVectors_e2.getColumns(columns);
+			INDArray entVecE1Rel_neg = entityVectors_e1_neg.getColumns(columns);
+			INDArray entVecE2Rel_neg = entityVectors_e2_neg.getColumns(columns);
 			
-			//Filter entity lists using 'wrong_filter'
+			// Filter entity lists using 'wrong_filter'
+			INDArray e1_filtered = Nd4j.zeros(columns.length);
+			INDArray e2_filtered = Nd4j.zeros(columns.length);
+			INDArray rel_filtered = Nd4j.zeros(columns.length);
+			INDArray e1_neg_filtered = Nd4j.zeros(columns.length);
+			INDArray e2_neg_filtered = Nd4j.zeros(columns.length);
+			for (int i = 0; i < columns.length; i++) { // TODO use getColumns() after Issue #89 Nd4j is fixed
+				e1_filtered.put(i, e1.getColumn(columns[i]));
+				e2_filtered.put(i, e2.getColumn(columns[i]));
+				rel_filtered.put(i, rel.getColumn(columns[i]));
+				e1_neg_filtered.put(i, e1_neg.getColumn(columns[i]));
+				e2_neg_filtered.put(i, e2_neg.getColumn(columns[i]));
+			}
 				
-			//Calculate U[i] gradient EXPLANATION WHY U gradient is activation see Socher NNAL Vortrag Slide 51
-			u_grad.put(r, Nd4j.sum(activation_pos.sub(activation_neg),1).reshape(sliceSize, 1)) ;
-			
-			
-			//Calculate U * f'(z) terms useful for gradient calculation
-			//activation function is sigmoid
-			INDArray temp_pos_all = activationDifferential(activation_pos).mulColumnVector(u.get(r));
-			INDArray temp_neg_all = activationDifferential(activation_neg).mulColumnVector(u.get(r).neg());
+			// Calculate U[i] gradient
+			if (tripplesOfRelationR.size()!=0) {
+				u_grad.put(r, Nd4j.sum(z_activation_pos.sub(z_activation_neg),1).reshape(sliceSize, 1)) ;
+			}else{
+				// Filling with zeros if there is no training example for this relation in the training batch
+				u_grad.put(r, Nd4j.ones(sliceSize,1));
+			}
+				
+			//Calculate U * f'(z) terms useful for other gradient calculation
+			INDArray temp_pos_all = activationDifferential_sigmoid(z_activation_pos).mulColumnVector(u.get(r));
+			INDArray temp_neg_all = activationDifferential_sigmoid(z_activation_neg).mulColumnVector(u.get(r).neg());
 			
 			// Calculate 'b[i]' gradient
-			b_grad.put(r, Nd4j.sum(temp_pos_all.add(temp_neg_all),1).reshape(1, sliceSize)) ;
-			
-			// Variables required for sparse matrix calculation
+			if (tripplesOfRelationR.size()!=0) {
+				b_grad.put(r, Nd4j.sum(temp_pos_all.add(temp_neg_all),1).reshape(1, sliceSize)) ;
+			}else{
+				// Filling with zeros if there is no training example for this relation in the training batch
+				b_grad.put(r, Nd4j.zeros(1,sliceSize));
+			}
+						
+			//Calculate sparse matrixes (not implemented in ND4j)	
 			INDArray values = Nd4j.ones(numOfWrongExamples);
 			INDArray rows = Nd4j.arange(0, numOfWrongExamples+1);	
 			
-			//TODO Calculate sparse matrixes
-			//not implemented in ND4j
+			INDArray e1_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
+			INDArray e2_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
+			INDArray e1_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+			INDArray e2_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
 			
+			//Initialize w gradient for this relation
 			INDArray w_grad_for_r = Nd4j.create(embeddingSize,embeddingSize,sliceSize);
-			ArrayList<INDArray> w_grad_slices = new ArrayList<INDArray>();
-			for (int k = 0; k < sliceSize; k++) {				
-				// U * f'(z) values corresponding to one slice
-				INDArray temp_pos = temp_pos_all.getRow(k);
-				INDArray temp_neg = temp_pos_all.getRow(k);
-				
-				//Calculate 'k'th slice of 'W[i]' gradient			
-				INDArray dot1 = (wordvectors_for_entities1_rel.mulRowVector(temp_pos)).mmul(wordvectors_for_entities2_rel.transpose());
-				INDArray dot2 = (wordvectors_for_entities1_rel_neg.mulRowVector(temp_neg)).mmul(wordvectors_for_entities2_rel_neg.transpose());
-				INDArray w_grad_k_slice = dot1.add(dot2);
-				
-				// PRÜFEN, AUSKOMMENTIEREN WENN ND4J SLICE ISSUE BEHOBEN IST: Illegal assignment, must be of same length
-				//w_grad_for_r.putSlice(k, w_grad_k_slice);
-				//w_grad.put(r, w_grad_for_r);
-				w_grad_slices.add(w_grad_k_slice);
-				
-				//Calculate 'k'th slice of 'V[i]' gradient				
-				INDArray eVstack = Nd4j.vstack(wordvectors_for_entities1_rel,wordvectors_for_entities2_rel);
-				INDArray eVstack_neg = Nd4j.vstack(wordvectors_for_entities1_rel_neg,wordvectors_for_entities2_rel_neg);
-				INDArray temparray = (eVstack.mulRowVector(temp_pos)).add(eVstack_neg.mulRowVector(temp_neg));	
-				INDArray sum_v = Nd4j.sum(eVstack.mulRowVector(temp_pos).add(eVstack_neg.mulRowVector(temp_neg)),1);
-				v_grad.get(r).putColumn(k, sum_v);
-				
-				// TODO Add contribution of 'V[i]' term in the entity vectors' gradient				
-				/*INDArray vOfThisRelation = v.get(r);
-				INDArray kth_slice_of_v = vOfThisRelation.getColumn(k); //slice is the column
-				INDArray v_pos = kth_slice_of_v.mmul(temp_pos);
-				INDArray v_neg = kth_slice_of_v.mmul(temp_neg);
-				
-				//entity_vectors_grad = entity_vectors_grad;
-				//get all entity vectors for e2 of this relation from this training batch, equal to entity_vectors[:, e2.tolist()]
-				
-				INDArray e2_entity_vectors_for_r_and_batch;
-				INDArray sliceOfW = getSliceOfaTensor(wOfThisRelation, k);		*/
-				
-				// TODO Add contribution of 'W[i]' term in the entity vectors' gradient
-				//TODO - Tensor problematic of ND4J and sparse vectors			
-				/*INDArray v_pos_e1 = Nd4j.zeros(embeddingSize, tripplesOfRelationR.size()); //V_pos[:self.embedding_size, :]
-				INDArray v_pos_e2 = Nd4j.zeros(embeddingSize, tripplesOfRelationR.size()); //V_pos[self.embedding_size:, :]
-				INDArray v_neg_e1 = Nd4j.zeros(embeddingSize, tripplesOfRelationR.size()); //V_neg[:self.embedding_size, :]
-				INDArray v_neg_e2 = Nd4j.zeros(embeddingSize, tripplesOfRelationR.size());
-				for (int i = 0; i < embeddingSize; i++) {		
-					if(i<(embeddingSize)){
-						v_pos_e1.put(i, v_pos.getRow(i));
-						v_neg_e1.put(i, v_neg.getRow(i));
-					}else{
-						v_pos_e2.put(i, v_pos.getRow(i));
-						v_neg_e2.put(i, v_neg.getRow(i));
-					}
+			if (tripplesOfRelationR.size()!=0) {			
+				ArrayList<INDArray> w_grad_slices = new ArrayList<INDArray>();
+				for (int k = 0; k < sliceSize; k++) {				
+					// U * f'(z) values corresponding to one slice
+					INDArray temp_pos = temp_pos_all.getRow(k);
+					INDArray temp_neg = temp_pos_all.getRow(k);
+					
+					//Calculate 'k'th slice of 'W[i]' gradient			
+					INDArray dot1 = (entVecE1Rel.mulRowVector(temp_pos)).mmul(entVecE2Rel.transpose());
+					INDArray dot2 = (entVecE1Rel_neg.mulRowVector(temp_neg)).mmul(entVecE2Rel_neg.transpose());
+					INDArray w_grad_k_slice = dot1.add(dot2);
+					
+					// PRÜFEN, AUSKOMMENTIEREN WENN ND4J SLICE ISSUE BEHOBEN IST: Illegal assignment, must be of same length
+					//w_grad_for_r.putSlice(k, w_grad_k_slice);
+					//w_grad.put(r, w_grad_for_r);
+					w_grad_slices.add(w_grad_k_slice);
+					
+					//Calculate 'k'th slice of V gradient				
+					INDArray eVstack = Nd4j.vstack(entVecE1Rel,entVecE2Rel);
+					INDArray eVstack_neg = Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg);
+					//INDArray temparray = (eVstack.mulRowVector(temp_pos)).add(eVstack_neg.mulRowVector(temp_neg));	
+					INDArray sum_v = Nd4j.sum(eVstack.mulRowVector(temp_pos).add(eVstack_neg.mulRowVector(temp_neg)),1);
+					v_grad.get(r).putColumn(k, sum_v);
+					
+					// Add contribution of V term in the entity vectors' gradient				
+					INDArray kth_slice_of_v = v.get(r).getColumn(k); //slice is the column
+					INDArray v_pos = kth_slice_of_v.mmul(temp_pos);
+					INDArray v_neg = kth_slice_of_v.mmul(temp_neg);
+					
+					INDArray v1 = v_pos.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns())).mmul(e1_sparse);
+					INDArray v2 = v_pos.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())).mmul(e2_sparse);
+					INDArray v3 = v_neg.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns())).mmul(e1_neg_sparse);
+					INDArray v4 = v_neg.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())).mmul(e2_neg_sparse);
+					entity_vectors_grad = entity_vectors_grad.add(v1).add(v2).add(v3).add(v4);
+					
+					// TODO Add contribution of 'W[i]' term in the entity vectors' gradient
+					INDArray w1 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel).mulRowVector(temp_pos)).mul(e1_sparse);
+					INDArray w2 = new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel).mulRowVector(temp_pos).mul(e2_sparse);	
+					INDArray w3 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel_neg).mulRowVector(temp_neg)).mul(e1_neg_sparse);
+					INDArray w4 = new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel_neg).mulRowVector(temp_neg).mul(e2_neg_sparse);
+					
+					entity_vectors_grad = entity_vectors_grad.add(w1).add(w2).add(w3).add(w4);
+					
 				}
-				INDArray temp1 = v_pos_e1.mul(wordvectors_for_entities1_rel);
-				INDArray temp2 = v_pos_e2.mul(wordvectors_for_entities2_rel);
-				INDArray temp3 = v_neg_e1.mul(wordvectors_for_entities1_neg);
-				INDArray temp4 = v_neg_e2.mul(wordvectors_for_entities2_neg);
-				// !!!! entity_vector_grad = entity_vector_grad.add(temp1.add(temp2).add(3).add(temp4));
-				*/
-	
-			}
-			// Normalize the gradients with the training batch size
-			INDArray w_grad_for_r2 = w_grad.get(r);
-			INDArray v_grad_for_r = v_grad.get(r);
-			w_grad_for_r = w_grad_for_r2.div(batchSize);
-			v_grad_for_r = v_grad_for_r.div(batchSize);
-			INDArray b_grad_for_r = b_grad.get(r);
-			b_grad_for_r = b_grad_for_r.div(batchSize);
-			INDArray u_grad_for_r = u_grad.get(r);
-			u_grad_for_r = u_grad_for_r.div(batchSize);
+				}else{
+					// Filling with zeros if there is no training example for this relation in the training batch
+					for (int i = 0; i < w_grad_for_r.length(); i++) {
+						w_grad_for_r.putScalar(i, 0);
+					}					
+				}
 			
+			// Normalize the gradients with the training batch size
+			w_grad.get(r).divi(batchSize);
+			v_grad.get(r).divi(batchSize);
+			b_grad.get(r).divi(batchSize);
+			u_grad.get(r).divi(batchSize);			
+		}
+		// Initialize word vector gradients as a matrix of zeros
+		INDArray word_vector_grad = Nd4j.zeros(embeddingSize, numOfWords);
+		
+		//System.out.println("numOfWords: "+numOfWords+" | num of entities: "+numberOfEntities);
+		
+		// Calculate word vector gradients from entity gradients
+		for (int i = 0; i < numberOfEntities; i++) {
+			int numOfWordsInEntity = tbj.entityLength(i);
+			int[] wordindexes = tbj.getWordIndexes(i);
+			//System.out.println("entity: "+i+" | NumOfWordInEntity: "+numOfWordsInEntity + " | wordindexes: "+wordindexes.length);
+			INDArray entity_vector_grad_column = entity_vectors_grad.getColumn(i);
+			// Normalize by number of words
+			entity_vector_grad_column.divi(numOfWordsInEntity);
+			// Add entity vector gradient into word_vector_grad.
+			for (int j = 0; j < wordindexes.length; j++) {
+				//System.out.println("put ev grad in column"+wordindexes[j]+" wv grad");
+				INDArray wvgrad_Column = word_vector_grad.getColumn(wordindexes[j]);
+				/* Error in ND4j
+				INDArray wvgradColumn = Nd4j.zeros(100,1);				
+				for (int l = 0; l < 100; l++) {
+					wvgradColumn.put(l, word_vector_grad.getScalar(l,wordindexes[j]));
+				}
+				INDArray evgradColumn = Nd4j.zeros(100,1);
+				for (int l = 0; l < 100; l++) {
+					evgradColumn.put(l, entity_vectors_grad.getScalar(l,i));
+				}
+				*/
+				word_vector_grad.put(wordindexes[j], wvgrad_Column.linearView().add(entity_vector_grad_column.linearView()));
+			}
 		}
 		
-		// Initialize word vector gradients as a matrix of zeros
-		INDArray word_vector_grad = Nd4j.zeros(embeddingSize, numberOfEntities);
-		
-		// TODO Calculate word vector gradients from entity gradients
-		/*int entity_len = numberOfWords;
-		for (int i = 0; i < numberOfEntities; i++) {
-			//TODO
-		}*/
-		
 		// Normalize word vector gradients and cost by the training batch size
-		//word_vector_grad = word_vector_grad.div(batchSize);
-	
+		word_vector_grad = word_vector_grad.div(batchSize);
 		cost = cost / batchSize;
 		
-		// Get unrolled gradient vector
-		INDArray theta_grad = parametersToStack(w_grad, v_grad, b_grad, u_grad);
-		INDArray theta = parametersToStack(w,v,b,u);
-		//Add regularization term to the cost and gradient
-		//cost = cost + 0.5*lamda * np.sum(theta * theta)
-		cost = cost + (0.5F * (lamda * Nd4j.sum(parametersToStack(w,v,b,u).mul(parametersToStack(w,v,b,u))).getFloat(0)));
-		//System.out.println("Overall Cost: "+cost);
-		//theta_grad = theta_grad + lamda * theta;
-		//System.out.println("theta: "+theta);
-		//System.out.println("theta * lamda: "+theta.mul(lamda));
-		theta_grad = theta_grad.add(theta.mul(lamda));
+		// Get stacked gradient vector and parameter vector
+		INDArray theta_grad = parametersToStack(w_grad, v_grad, b_grad, u_grad,word_vector_grad);
+		INDArray theta = parametersToStack(w,v,b,u,wordvectors);
 		
-		//RETURN values old: cost, theta_grad
-		//ArrayList<Object> cost_theta_grad = new ArrayList<>();
-		//cost_theta_grad.add(cost);
-		//cost_theta_grad.add(theta_grad);
+		//Add regularization term to the cost and gradient	
+		cost = cost + (0.5F * (lamda * Nd4j.sum(theta.mul(theta)).getFloat(0)));
+		theta_grad = theta_grad.add(theta.mul(lamda));
+		//System.out.println("Cost: "+cost);
+		
+		/*Alternative RETURN values old: cost, theta_grad
+		ArrayList<Object> cost_theta_grad = new ArrayList<>();
+		cost_theta_grad.add(cost);
+		cost_theta_grad.add(theta_grad);
+		*/
 		
 		// IPair<Double, double[]>
 		 return BasicPair.make( (double)cost, theta_grad.data().asDouble() );
@@ -413,6 +469,44 @@ public class NTN implements IDifferentiableFn {
 		
 	}
 	
+	private INDArray parametersToStack(HashMap<Integer, INDArray> w, HashMap<Integer, INDArray> v, HashMap<Integer, INDArray> b, HashMap<Integer, INDArray> u, INDArray wordvectors){
+		// NOTE: flatten doesnt work as numpy or matlab !!!!
+		
+		// Initialize the 'theta' vector
+		INDArray theta_return = Nd4j.zeros(0,0);
+		
+		//w:
+		for (int j = 0; j < w.size(); j++) {
+			// concatenate to stack
+			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(w.get(j)) );
+		}
+		//arrayInfo(theta_return, "after w theta_return");
+
+		//v:
+		for (int j = 0; j < v.size(); j++) {
+			// concatenate to stack
+			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(v.get(j)) );
+		}
+		//arrayInfo(theta_return, "after v theta_return");
+		
+		//b:
+		for (int j = 0; j < b.size(); j++) {
+			// concatenate to stack
+			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(b.get(j)) );
+		}
+		//arrayInfo(theta_return, "after b theta_return");
+
+		//U:
+		for (int j = 0; j < u.size(); j++) {
+			// concatenate to stack
+			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(u.get(j)) );
+		}
+
+		//Word Vectors:
+		theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(wordvectors) );	
+		return theta_return;			
+	}
+	
 	private void stackToParameters(INDArray theta){
 		//Read the configuration from concatenate flattened vector to the specific paramters: w,v,b,u,...
 		int readposition = 0;
@@ -420,6 +514,7 @@ public class NTN implements IDifferentiableFn {
 		int v_size = 2* embeddingSize * sliceSize;
 		int b_size = 1* sliceSize;
 		int u_size = sliceSize*1;
+		int wordvectors_size = embeddingSize*numOfWords;
 		
 		//load w:
 		for (int r = 0; r < w.size(); r++) {		
@@ -449,7 +544,10 @@ public class NTN implements IDifferentiableFn {
 				u.get(r).put(i, theta.getScalar(readposition++));
 			}
 		}
-		//TODO for word embeddings
+		//load word vectors:
+		for (int i = 0; i < wordvectors_size; i++) {
+			
+		}
 	}
 
 	public INDArray computeBestThresholds(INDArray _theta, ArrayList<Tripple> _devTrippels){
@@ -457,8 +555,7 @@ public class NTN implements IDifferentiableFn {
 		stackToParameters(_theta);
 		
 		// create entity vectors from word vectors
-		INDArray entity_vectors = Nd4j.zeros(embeddingSize, numberOfEntities);
-		entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors(entity_vectors);
+		INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors();
 		//arrayInfo(entity_vectors, "entity_vectors");
 		
 		INDArray dev_scores = Nd4j.zeros(_devTrippels.size());
@@ -561,8 +658,7 @@ public class NTN implements IDifferentiableFn {
 		stackToParameters(_theta);
 		
 		// create entity vectors from word vectors
-		INDArray entity_vectors = Nd4j.zeros(embeddingSize, numberOfEntities);
-		entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors(entity_vectors);
+		 INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors();
 		
 		// initialize array to store the predictions of in- and correct tripples of the test data
 		INDArray predictions = Nd4j.zeros(_testTripples.size());
@@ -630,7 +726,7 @@ public class NTN implements IDifferentiableFn {
 		return theta_inital;
 	}
 	
-	public INDArray activationDifferential(INDArray activation){
+	public INDArray activationDifferential_sigmoid(INDArray activation){
 		//for a sigmoid activation function:
 		//Ableitung der sigmoid function f(z) -> f'(z) -> (z * (1 - z))
 		// z = activation_pos		

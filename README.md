@@ -8,15 +8,22 @@ A Neural Tensor Network for Knowledge Base Completion as described in the paper 
 - Java Implementation: here,
   - based on ND4j (http://nd4j.org/) as computation libary for linear algebra (as alternative to numpy and scipy in Python)
   - based on LBFGS Optimization based on https://github.com/aria42/nlp-utils
+  - jmatio for loading *.mat word embeddings
+  
+- Before running the code:
+ - Run Configurations / Arguments / add "-Xmx2G" in the box at the bottom
+ - Edit path to training data
+
 
 Additional information / resources:
 - Architecture of NTN: http://fs2.directupload.net/images/150428/hjxlxzom.jpg
 - Classdiagram:
-- 
+
+
 Main classes:
-Run_NTN: start the project
-NTN: Neural Tensor Network with Cost/Loss function
-Data_Factory: responsible for loading, providing and managing data
+- Run_NTN: start the project
+- NTN: Neural Tensor Network with Cost/Loss function
+- Data_Factory: responsible for loading, providing and managing data
 
 Accuracy with data from Socher et. al 2013: Freebase: Wordbase
 
