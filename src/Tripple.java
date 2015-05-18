@@ -36,18 +36,6 @@ public class Tripple {
 		this.label = label;
 	}
 	
-	Tripple(int index_entity1, int index_relation, int index_entity2){	
-		this.index_entity1 = index_entity1;
-		this.index_relation = index_relation;
-		this.index_entity2 = index_entity2;
-		Random rand = new Random();
-		int random_corrupt_entity = rand.nextInt((3 - 1) + 1) + 1; //rand.nextInt((max - min) + 1) + min
-		if (random_corrupt_entity == index_entity2) {
-			random_corrupt_entity = rand.nextInt((3 - 1) + 1) + 1;
-		}
-		this.index_entity3_corrupt = random_corrupt_entity;
-		
-	}
 	
 	//Getter und Setter
 	public String getEntity1() {
@@ -98,14 +86,17 @@ public class Tripple {
 	public void setWordvector_entity2(INDArray wordvector_entity2) {
 		this.wordvector_entity2 = wordvector_entity2;
 	}
-	public String getEntity3_corrupt() {
-		return entity3_corrupt;
-	}
+
 	public void setEntity3_corrupt(String entity3_corrupt) {
 		this.entity3_corrupt = entity3_corrupt;
 	}
 	public int getIndex_entity3_corrupt() {
 		return index_entity3_corrupt;
+	}
+	public int getIndex_entity3_corruptRANDOM(int maxNumOfEntity) {	
+		Random rand = new Random();
+		int random_corrupt_entity = rand.nextInt((maxNumOfEntity - 1) + 1) + 1;
+		return random_corrupt_entity;
 	}
 	public void setIndex_entity3_corrupt(int index_entity3_corrupt) {
 		this.index_entity3_corrupt = index_entity3_corrupt;

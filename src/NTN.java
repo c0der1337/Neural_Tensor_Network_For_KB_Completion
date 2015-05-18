@@ -84,7 +84,7 @@ public class NTN implements IDifferentiableFn {
 	 * @see         ...
 	 */
 	@Override
-	public IPair<Double, double[]> computeAt(double[] _theta) {		
+	public IPair<Double, double[]> computeAt(double[] _theta) {
 		//load input paramter(theta) into java variables for further computations
 		stackToParameters(new Util().convertDoubleArrayToFlattenedINDArray(_theta));
 		
@@ -130,7 +130,7 @@ public class NTN implements IDifferentiableFn {
 				Tripple tripple = tripplesOfRelationR.get(j);
 				entityVectors_e1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
 				entityVectors_e2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
-				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corrupt()));
+				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corruptRANDOM(numberOfEntities)));
 			}
 			//arrayInfo(wordvectors_for_entities2, "wordvectors_for_entities2");
 			
@@ -156,25 +156,18 @@ public class NTN implements IDifferentiableFn {
 			INDArray wOfThisRelation = w.get(r);
 			for (int slice = 0; slice < sliceSize; slice++) {
 				INDArray sliceOfW = new Util().getSliceOfaTensor(wOfThisRelation, slice);		
-				INDArray dotproduct = sliceOfW.mmul(entityVectors_e2);
-				INDArray dotproduct_neg = sliceOfW.mmul(entityVectors_e2_neg);
-				INDArray result = Nd4j.sum(entityVectors_e1.mul(dotproduct), 0);
-				INDArray result_neg = Nd4j.sum(entityVectors_e1_neg.mul(dotproduct_neg), 0);
-				preactivation_pos.putRow(slice, result);
-				preactivation_neg.putRow(slice, result_neg);
+				preactivation_pos.putRow(slice, Nd4j.sum(entityVectors_e1.mul(sliceOfW.mmul(entityVectors_e2)), 0));
+				preactivation_neg.putRow(slice, Nd4j.sum(entityVectors_e1_neg.mul(sliceOfW.mmul(entityVectors_e2_neg)), 0));
 			}
 			
 			// Add contribution of V
 			INDArray vOfThisRelation_T= v.get(r).transpose();
 			INDArray vstack = Nd4j.vstack(entityVectors_e1, entityVectors_e2);	
-			INDArray dotproduct = vOfThisRelation_T.mmul(vstack);;
-			INDArray dotproduct_neg = vOfThisRelation_T.mmul(Nd4j.vstack(entityVectors_e1_neg, entityVectors_e2_neg));
 			
 			// Add contribution of B
 			INDArray bOfThisRelation_T = b.get(r).transpose();
-			INDArray temp = dotproduct.addColumnVector(bOfThisRelation_T);	
-			preactivation_pos = preactivation_pos.add(temp);
-			preactivation_neg = preactivation_neg.add(dotproduct_neg.addColumnVector(bOfThisRelation_T));
+			preactivation_pos = preactivation_pos.add(vOfThisRelation_T.mmul(vstack).addColumnVector(bOfThisRelation_T));
+			preactivation_neg = preactivation_neg.add(vOfThisRelation_T.mmul(Nd4j.vstack(entityVectors_e1_neg, entityVectors_e2_neg)).addColumnVector(bOfThisRelation_T));
 			
 			// Apply the activation function
 			INDArray z_activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_pos));
@@ -283,9 +276,7 @@ public class NTN implements IDifferentiableFn {
 					INDArray temp_neg = temp_pos_all.getRow(k);
 					
 					//Calculate 'k'th slice of 'W[i]' gradient			
-					INDArray dot1 = (entVecE1Rel.mulRowVector(temp_pos)).mmul(entVecE2Rel.transpose());
-					INDArray dot2 = (entVecE1Rel_neg.mulRowVector(temp_neg)).mmul(entVecE2Rel_neg.transpose());
-					INDArray w_grad_k_slice = dot1.add(dot2);
+					INDArray w_grad_k_slice = (entVecE1Rel.mulRowVector(temp_pos)).mmul(entVecE2Rel.transpose()).add((entVecE1Rel_neg.mulRowVector(temp_neg)).mmul(entVecE2Rel_neg.transpose()));
 					
 					// PRÜFEN, AUSKOMMENTIEREN WENN ND4J SLICE ISSUE BEHOBEN IST: Illegal assignment, must be of same length
 					//w_grad_for_r.putSlice(k, w_grad_k_slice);
@@ -293,10 +284,8 @@ public class NTN implements IDifferentiableFn {
 					w_grad_slices.add(w_grad_k_slice);
 					
 					//Calculate 'k'th slice of V gradient				
-					INDArray eVstack = Nd4j.vstack(entVecE1Rel,entVecE2Rel);
-					INDArray eVstack_neg = Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg);
 					//INDArray temparray = (eVstack.mulRowVector(temp_pos)).add(eVstack_neg.mulRowVector(temp_neg));	
-					INDArray sum_v = Nd4j.sum(eVstack.mulRowVector(temp_pos).add(eVstack_neg.mulRowVector(temp_neg)),1);
+					INDArray sum_v = Nd4j.sum(Nd4j.vstack(entVecE1Rel,entVecE2Rel).mulRowVector(temp_pos).add(Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg).mulRowVector(temp_neg)),1);
 					v_grad.get(r).putColumn(k, sum_v);
 					
 					// Add contribution of V term in the entity vectors' gradient				
@@ -349,16 +338,6 @@ public class NTN implements IDifferentiableFn {
 			for (int j = 0; j < wordindexes.length; j++) {
 				//System.out.println("put ev grad in column"+wordindexes[j]+" wv grad");
 				INDArray wvgrad_Column = word_vector_grad.getColumn(wordindexes[j]);
-				/* Error in ND4j
-				INDArray wvgradColumn = Nd4j.zeros(100,1);				
-				for (int l = 0; l < 100; l++) {
-					wvgradColumn.put(l, word_vector_grad.getScalar(l,wordindexes[j]));
-				}
-				INDArray evgradColumn = Nd4j.zeros(100,1);
-				for (int l = 0; l < 100; l++) {
-					evgradColumn.put(l, entity_vectors_grad.getScalar(l,i));
-				}
-				*/
 				word_vector_grad.put(wordindexes[j], wvgrad_Column.linearView().add(entity_vector_grad_column.linearView()));
 			}
 		}
@@ -374,7 +353,7 @@ public class NTN implements IDifferentiableFn {
 		//Add regularization term to the cost and gradient	
 		cost = cost + (0.5F * (lamda * Nd4j.sum(theta.mul(theta)).getFloat(0)));
 		theta_grad = theta_grad.add(theta.mul(lamda));
-		//System.out.println("Cost: "+cost);
+		System.out.println("Cost: "+cost);
 		
 		/*Alternative RETURN values old: cost, theta_grad
 		ArrayList<Object> cost_theta_grad = new ArrayList<>();
@@ -389,84 +368,6 @@ public class NTN implements IDifferentiableFn {
 	@Override
 	public int getDimension() {
 		return dimension_for_minimizer;
-	}
-	
-	private INDArray parametersToStack(HashMap<Integer, INDArray> w, HashMap<Integer, INDArray> v, HashMap<Integer, INDArray> b, HashMap<Integer, INDArray> u){
-		// NOTE: flatten doesnt work as numpy or matlab !!!!
-		
-		// Initialize the 'theta' vector and 'decode_info' for the network configuration
-		INDArray theta_return = Nd4j.zeros(0,0);
-		ArrayList theta = new ArrayList<INDArray>();
-		
-		ArrayList decode_info = new ArrayList<HashMap>();
-		HashMap decode_cell = new HashMap<Integer, Integer[]>();
-		
-		//w:
-		for (int j = 0; j < w.size(); j++) {
-			//Store the configuration and concatenate to the unrolled vector
-			decode_cell.put(j, w.get(j).shape());
-			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(w.get(j)) );
-		}
-		//arrayInfo(theta_return, "after w theta_return");
-		
-		//Store the configuration dictionary of the argument
-		decode_info.add(decode_cell);
-		decode_cell.clear();
-		//v:
-		for (int j = 0; j < v.size(); j++) {
-			//Store the configuration and concatenate to the unrolled vector
-			decode_cell.put(j, v.get(j).shape());
-			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(v.get(j)) );
-		}
-		//arrayInfo(theta_return, "after v theta_return");
-		
-		//Store the configuration dictionary of the argument
-		decode_info.add(decode_cell);
-		decode_cell.clear();
-		
-		//b:
-		for (int j = 0; j < b.size(); j++) {
-			//Store the configuration and concatenate to the unrolled vector
-			decode_cell.put(j, b.get(j).shape());
-			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(b.get(j)) );
-		}
-		//arrayInfo(theta_return, "after b theta_return");
-		
-		//Store the configuration dictionary of the argument
-		decode_info.add(decode_cell);
-		decode_cell.clear();
-		
-		//U:
-		for (int j = 0; j < u.size(); j++) {
-			//Store the configuration and concatenate to the unrolled vector
-			decode_cell.put(j, u.get(j).shape());
-			theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(u.get(j)) );
-		}
-		//arrayInfo(theta_return, "after u theta_return");
-		
-		//Store the configuration dictionary of the argument
-		decode_info.add(decode_cell);
-		decode_cell.clear();
-				
-		//TODO for word embeddings
-		/*for (int j = 0; j < vec.vocab().numWords(); j++) {
-			//Store the configuration and concatenate to the unrolled vector
-			decode_cell.put(j, vec.getWordVectorMatrix(vec.vocab().wordAtIndex(j)).shape());
-			theta.add(Nd4j.concat(theta.size(), Nd4j.toFlattened(vec.getWordVectorMatrix(vec.vocab().wordAtIndex(j)))));
-		}
-		//Store the configuration dictionary of the argument
-		decode_info.add(decode_cell);
-		decode_cell.clear();
-		*/
-		
-		// return theta, decode_info
-		ArrayList returnparameters = new ArrayList<ArrayList>();
-		returnparameters.add(theta);
-		returnparameters.add(decode_info);
-		
-		
-		return theta_return;		
-		
 	}
 	
 	private INDArray parametersToStack(HashMap<Integer, INDArray> w, HashMap<Integer, INDArray> v, HashMap<Integer, INDArray> b, HashMap<Integer, INDArray> u, INDArray wordvectors){
@@ -504,10 +405,12 @@ public class NTN implements IDifferentiableFn {
 
 		//Word Vectors:
 		theta_return = Nd4j.concat(0, Nd4j.toFlattened(theta_return), Nd4j.toFlattened(wordvectors) );	
+		//System.out.println("Theta_return size"+theta_return.length());
 		return theta_return;			
 	}
 	
 	private void stackToParameters(INDArray theta){
+		//System.out.println("Theta_input size"+theta.length());
 		//Read the configuration from concatenate flattened vector to the specific paramters: w,v,b,u,...
 		int readposition = 0;
 		int w_size = embeddingSize*embeddingSize*sliceSize; // number of values for paramter w for one relation

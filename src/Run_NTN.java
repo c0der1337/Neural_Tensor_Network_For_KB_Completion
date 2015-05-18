@@ -10,6 +10,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 
+import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.SplitTestAndTrain;
@@ -32,23 +33,32 @@ import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
 	public static void main(String[] args) throws IOException {
-		//Data path
-		String data_path = "C://Users//Patrick//Documents//master arbeit//original_code//data//Wordnet//";
-		String theta_path = "C://Users//Patrick//Documents//master arbeit//";
+		//Restrict data type to float to save memory
+		Nd4j.dtype = DataBuffer.FLOAT;
 		
+		//Data path
+		String data_path="";String theta_path="";
+		//if (args[0] ==null) {
+			data_path = "C://Users//Patrick//Documents//master arbeit//original_code//data//Wordnet//";
+			theta_path = "C://Users//Patrick//Documents//master arbeit//";
+		//}else{
+		//	data_path = args[0];
+		//	theta_path = args[0];
+		//}
+
 		//Paramters
-		int batchSize = 10; 			//training batch size, socherr: 20.000
+		int batchSize = 5; 			//training batch size, socherr: 20.000
 		int numWVdimensions = 100; 		// size of the dimension of a word vector
-		int numIterations = 3; 		// number of optimization iterations, every iteration with a new training batch job, socherr: 500
-		int batch_iterations = 3;		// number of optimazation iterations for each batchs, socherr: 5
+		int numIterations = 500; 		// number of optimization iterations, every iteration with a new training batch job, socherr: 500
+		int batch_iterations = 5;		// number of optimazation iterations for each batchs, socherr: 5
 		int sliceSize = 3; 				//number of slices in the tensor w and v
-		int corrupt_size = 10; 			// corruption size
+		int corrupt_size = 3; 			// corruption size
 		int activation_function=1; 		//not implemented always sigmoid, tanh or [x] sigmoid
+		int numOfRelationsUsed=1;		// parameter is added to reduced the size of relations and to get faster results, not implemented
 		float lamda = 0.0001F;			// regulariization parameter
 		
 		//support utilities
-		Util u = new Util();
-		System.out.println("Test");		
+		Util u = new Util();	
 		//Load data entities, relation, traingsdata, word vectors ...
 		DataFactory tbj = DataFactory.getInstance(batchSize, corrupt_size, numWVdimensions);
 		tbj.loadEntitiesFromSocherFile(data_path +"entities.txt");

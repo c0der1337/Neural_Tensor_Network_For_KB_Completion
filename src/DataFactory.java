@@ -70,7 +70,7 @@ public class DataFactory{
 	
 	public ArrayList<Tripple> getBatchJobTripplesOfRelation(int _relation_index){
 		ArrayList<Tripple> tripplesOfThisRelationFromBatchJob = new ArrayList<Tripple>();
-		//System.out.println("batchjob size: "+batchjob.size());
+		//System.out.println("batchjob size: "+batchjob.size()+" | trainingTripples size: "+trainingTripples.size());
 		for (int i = 0; i < batchjob.size(); i++) {
 			if (batchjob.get(i).getIndex_relation()==_relation_index) {
 				tripplesOfThisRelationFromBatchJob.add(trainingTripples.get(i));
@@ -94,24 +94,20 @@ public class DataFactory{
 		return trainingTripples;
 	}
 
-	public void setTrainingTripples(ArrayList<Tripple> tripples) {
-		this.trainingTripples = tripples;
-	}
+
 	public void generateNewTrainingBatchJob(){
-		//TODO if batchjob is greater than amount of triples, start from zero again
 		batchjob.clear();
 		Collections.shuffle(trainingTripples);
 		for (int h = 0; h < corrupt_size; h++) {
 			for (int i = 0; i < batch_size; i++) {
+				//System.out.println("e1: "+trainingTripples.get(i).getEntity1()+" | e3:"+trainingTripples.get(i).getIndex_entity3_corrupt());
 				batchjob.add(trainingTripples.get(i));
+				
 			}
 		}
 		System.out.println("Training Batch Job created and contains of "+batchjob.size()+" Trippels.");
 	}
 	public void getEntity1vectormatrixOfBatchJob(){
-		for (int i = 0; i < i; i++) {
-			
-		}
 	}
 	
 	public INDArray getINDArrayOfTripples(ArrayList<Tripple> _tripples){
@@ -180,7 +176,8 @@ public class DataFactory{
 	    //generate the corrupt 3. tripple
 		for (Tripple tripple : trainingTripples) {	
 			Random rand = new Random();
-			int random_corrupt_entity = rand.nextInt((corrupt_size - 1) + 1) + 1; //rand.nextInt((max - min) + 1) + min		
+			int random_corrupt_entity = rand.nextInt((numOfentities - 1) + 1) + 1; //rand.nextInt((max - min) + 1) + min		
+			//System.out.println("random_corrupt_entity: "+random_corrupt_entity);
 			tripple.setIndex_entity3_corrupt(random_corrupt_entity);
 		}
 	    System.out.println(trainings_tripple_counter+" Training Examples loaded...");
