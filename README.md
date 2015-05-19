@@ -16,8 +16,10 @@ A Neural Tensor Network for Knowledge Base Completion as described in the paper 
 
 
 Additional information / resources:
-- Architecture of NTN: http://fs2.directupload.net/images/150428/hjxlxzom.jpg
-- Classdiagram:
+- Architecture of NTN: 
+ - digital: [WE dimension=6, slice size=3] http://fs1.directupload.net/images/150519/5owgxnhp.png  
+ - draft: http://fs2.directupload.net/images/150428/hjxlxzom.jpg
+- Classdiagram: http://fs2.directupload.net/images/150519/hqjyguo6.png
 
 
 Main classes:
