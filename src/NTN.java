@@ -19,10 +19,10 @@ public class NTN implements IDifferentiableFn {
 	int numOfWords; 			// number of word vectors
 	int batchSize; 				// training batch size
 	int sliceSize;				// 3 number of slices in tensor
-	int activation_function;	// 0 - tanh, 1 - sigmoid
 	float lamda;				// regulariization parameter
 	INDArray theta_inital; 		// stacked paramters after initlization of NTN
 	int dimension_for_minimizer;// dimensions / size of theta for the minimizer
+	String activationFunc;		// "tanh" or "sigmoid"
    
 	//Network Parameters - Integer identifies the relation, there are different parameters for each relation
 	HashMap<Integer, INDArray> w;
@@ -40,7 +40,7 @@ public class NTN implements IDifferentiableFn {
 			int numberOfWords,			// number of word vectors
 			int batchSize, 				// training batch size original: 20.000
 			int sliceSize, 				// 3 number of slices in tensor
-			int activation_function,	// 0 - tanh, 1 - sigmoid
+			String activation_function,	// 0 - tanh, 1 - sigmoid
 			DataFactory tbj,			// data management unit
 			float lamda){  				// regulariization parameter
 		
@@ -57,6 +57,7 @@ public class NTN implements IDifferentiableFn {
 		this.sliceSize = sliceSize;
 		this.lamda = lamda;
 		this.numOfWords = numberOfWords;
+		this.activationFunc = activation_function;
 		update = 0;
 		double r = 1 / Math.sqrt(2*embeddingSize); // r is used for a better initialization of w
 		
@@ -72,11 +73,11 @@ public class NTN implements IDifferentiableFn {
 		// For random wordVector initialization:
 		//wordvectors = Nd4j.rand(embeddingSize,numberOfWords).muli(0.0001);
 		
-		// Unroll the parameters into a vector		
-		theta_inital = parametersToStack(w, v, b, u, wordvectors);		
+		// Unroll the parameters into a vector
+		theta_inital = parametersToStack(w, v, b, u, wordvectors);
 		dimension_for_minimizer = theta_inital.data().asDouble().length;
-		
 	}
+	
 	/**
 	 * Returns the cost/loss for the current paramters and return optimized paramters 
 	 * @param  _theta  	an double array with the flattened paramters of the network
@@ -85,7 +86,7 @@ public class NTN implements IDifferentiableFn {
 	 */
 	@Override
 	public IPair<Double, double[]> computeAt(double[] _theta) {
-		//load input paramter(theta) into java variables for further computations
+		// Load input paramter(theta) into corresponding INDArray variables for loss / cost computation
 		stackToParameters(new Util().convertDoubleArrayToFlattenedINDArray(_theta));
 		
 		// Initialize entity vectors and their gradient as matrix of zeros
@@ -105,7 +106,7 @@ public class NTN implements IDifferentiableFn {
 		HashMap<Integer, INDArray> b_grad = new HashMap<Integer, INDArray>();
 		
 		for (int r = 0; r < numberOfRelations; r++) {			
-			// Make a list of examples / tripples for the ith relation
+			// Get a list of examples / tripples for the ith relation
 			ArrayList<Tripple> tripplesOfRelationR = tbj.getBatchJobTripplesOfRelation(r);
 			//System.out.println(tripplesOfRelationR.size()+" Trainingsexample for relation r="+r);
 			
@@ -126,12 +127,14 @@ public class NTN implements IDifferentiableFn {
 			INDArray e2_neg = Nd4j.zeros(e1.shape());
 			
 			// Get only entity vectors of training examples of the this / rth relation
+			//System.out.println("numberOfEntities: "+numberOfEntities);
 			for (int j = 0; j < tripplesOfRelationR.size(); j++) {
 				Tripple tripple = tripplesOfRelationR.get(j);
 				entityVectors_e1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
 				entityVectors_e2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
-				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corruptRANDOM(numberOfEntities)));
+				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corruptRANDOM(numberOfEntities-1)));
 			}
+			
 			//arrayInfo(wordvectors_for_entities2, "wordvectors_for_entities2");
 			
 			// Choose entity vectors for negative training example based on random
@@ -160,19 +163,19 @@ public class NTN implements IDifferentiableFn {
 				preactivation_neg.putRow(slice, Nd4j.sum(entityVectors_e1_neg.mul(sliceOfW.mmul(entityVectors_e2_neg)), 0));
 			}
 			
-			// Add contribution of V
+			// Add contribution of V / W2
 			INDArray vOfThisRelation_T= v.get(r).transpose();
 			INDArray vstack = Nd4j.vstack(entityVectors_e1, entityVectors_e2);	
 			
-			// Add contribution of B
+			// Add contribution of bias b
 			INDArray bOfThisRelation_T = b.get(r).transpose();
 			preactivation_pos = preactivation_pos.add(vOfThisRelation_T.mmul(vstack).addColumnVector(bOfThisRelation_T));
 			preactivation_neg = preactivation_neg.add(vOfThisRelation_T.mmul(Nd4j.vstack(entityVectors_e1_neg, entityVectors_e2_neg)).addColumnVector(bOfThisRelation_T));
 			
 			// Apply the activation function
-			INDArray z_activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_pos));
-			INDArray z_activation_neg = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("sigmoid", preactivation_neg));			
-			//System.out.println("activation: " +activation_pos);
+			INDArray z_activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform(activationFunc, preactivation_pos));
+			INDArray z_activation_neg = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform(activationFunc, preactivation_neg));	
+			//System.out.println("activation: " + z_activation_pos);
 			
 			// Calculate scores for positive and negative examples
 			INDArray score_pos = u.get(r).transpose().mmul(z_activation_pos);
@@ -181,13 +184,12 @@ public class NTN implements IDifferentiableFn {
 			//System.out.println("score_neg: "+score_neg);
 	
 			//Filter for training examples, (that already predicted correct and dont need to be in account for further optimization of the paramters)			
-			INDArray indx = Nd4j.ones(score_pos.columns(),1);
-			//arrayInfo(wrong_filter, "wrong_filter");
+			INDArray indx = Nd4j.ones(score_pos.columns(),1); // indx: currently all entries are used for further optimization [1111111]
 			for (int i = 0; i < score_pos.columns(); i++) {
 				//System.out.println("score pos: " + score_pos.getRow(0).getFloat(i)+1 +" > "+score_neg.getRow(0).getFloat(i));
+				// Compare of the correct Tripple (e1,e2) is scored higher +1 than the corresponding corrupt Tripple (e1,e3)
 				if (score_pos.getRow(0).getFloat(i)+1 > score_neg.getRow(0).getFloat(i)) {
 					indx.put(i,0, 1.0);
-					//cost2 = cost2 + score_pos.getRow(0).getFloat(i)+1 - score_neg.getRow(0).getFloat(i);
 				}else{
 					indx.put(i,0, 0.0);
 				}
@@ -229,7 +231,8 @@ public class NTN implements IDifferentiableFn {
 			INDArray rel_filtered = Nd4j.zeros(columns.length);
 			INDArray e1_neg_filtered = Nd4j.zeros(columns.length);
 			INDArray e2_neg_filtered = Nd4j.zeros(columns.length);
-			for (int i = 0; i < columns.length; i++) { // TODO use getColumns() after Issue #89 Nd4j is fixed
+			
+			for (int i = 0; i < columns.length; i++) { // TODO use getColumns() after Issue #89 Nd4j is fixed (higher than v0.0.3.5.5.3)
 				e1_filtered.put(i, e1.getColumn(columns[i]));
 				e2_filtered.put(i, e2.getColumn(columns[i]));
 				rel_filtered.put(i, rel.getColumn(columns[i]));
@@ -246,8 +249,8 @@ public class NTN implements IDifferentiableFn {
 			}
 				
 			//Calculate U * f'(z) terms useful for other gradient calculation
-			INDArray temp_pos_all = activationDifferential_sigmoid(z_activation_pos).mulColumnVector(u.get(r));
-			INDArray temp_neg_all = activationDifferential_sigmoid(z_activation_neg).mulColumnVector(u.get(r).neg());
+			INDArray temp_pos_all = activationDifferential(z_activation_pos).mulColumnVector(u.get(r));
+			INDArray temp_neg_all = activationDifferential(z_activation_neg).mulColumnVector(u.get(r).neg());
 			
 			// Calculate 'b[i]' gradient
 			if (tripplesOfRelationR.size()!=0) {
@@ -324,8 +327,6 @@ public class NTN implements IDifferentiableFn {
 		// Initialize word vector gradients as a matrix of zeros
 		INDArray word_vector_grad = Nd4j.zeros(embeddingSize, numOfWords);
 		
-		//System.out.println("numOfWords: "+numOfWords+" | num of entities: "+numberOfEntities);
-		
 		// Calculate word vector gradients from entity gradients
 		for (int i = 0; i < numberOfEntities; i++) {
 			int numOfWordsInEntity = tbj.entityLength(i);
@@ -353,7 +354,7 @@ public class NTN implements IDifferentiableFn {
 		//Add regularization term to the cost and gradient	
 		cost = cost + (0.5F * (lamda * Nd4j.sum(theta.mul(theta)).getFloat(0)));
 		theta_grad = theta_grad.add(theta.mul(lamda));
-		System.out.println("Cost: "+cost);
+		System.out.println("Cost: "+cost+"| Amount of Tripples updated: "+update+" from batchsize: "+batchSize);
 		
 		/*Alternative RETURN values old: cost, theta_grad
 		ArrayList<Object> cost_theta_grad = new ArrayList<>();
@@ -629,12 +630,13 @@ public class NTN implements IDifferentiableFn {
 		return theta_inital;
 	}
 	
-	public INDArray activationDifferential_sigmoid(INDArray activation){
+	public INDArray activationDifferential(INDArray activation){
 		//for a sigmoid activation function:
 		//Ableitung der sigmoid function f(z) -> f'(z) -> (z * (1 - z))
-		// z = activation_pos		
-		return activation.mul((Nd4j.ones(activation.rows(), activation.columns()).sub(activation)));
+		//Ableitung der tanh function f(z) -> f'(z) -> (1-tanh²(z))	
+			return Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform(activationFunc, activation).derivative());
 	}
+
 	
 	public DataFactory getDatafactory() {
 		return tbj;

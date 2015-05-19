@@ -38,6 +38,7 @@ public class DataFactory{
 	private static HashMap<String, INDArray> worvectorWordVec = new HashMap<String, INDArray>(); // return word vector for a given word as string
 	private static HashMap<Integer, INDArray> worvectorNumVec = new HashMap<Integer, INDArray>(); // return word vector for a given word index
 	private INDArray wordVectorMaxtrixLoaded; //matrix contains the original loaded word vectors, size: Word_embedding * numOfWords, every column contains a word vector
+	private ArrayList<String> vocab = new ArrayList<String>(); //List with words of entities for only loading word vectors, that need for entity vector creation
 	
 	private int numOfentities;
 	private int numOfRelations;
@@ -73,7 +74,7 @@ public class DataFactory{
 		//System.out.println("batchjob size: "+batchjob.size()+" | trainingTripples size: "+trainingTripples.size());
 		for (int i = 0; i < batchjob.size(); i++) {
 			if (batchjob.get(i).getIndex_relation()==_relation_index) {
-				tripplesOfThisRelationFromBatchJob.add(trainingTripples.get(i));
+				tripplesOfThisRelationFromBatchJob.add(batchjob.get(i));
 			}
 		}
 		return tripplesOfThisRelationFromBatchJob;
@@ -131,13 +132,32 @@ public class DataFactory{
 	    while (line != null) {
 	    	entitiesNumWord.put(entities_counter, line);
 	    	entitiesWordNum.put(line,entities_counter);
+	    	//get words from entity 	
+	    	String entity_name_clear; //clear name without _  __name_ -> name
+			try {
+				entity_name_clear = line.substring(2, line.lastIndexOf("_"));
+			} catch (Exception e) {
+				entity_name_clear =line.substring(2);			
+			}
+			//System.out.println("entity_name_clear: "+entity_name_clear);			
+			
+			if (entity_name_clear.contains("_")) { //whitespaces are _
+				//Entity conains of more than one word
+				for (int j = 0; j <entity_name_clear.split("_").length; j++) {
+						vocab.add(entity_name_clear.split("_")[j]);
+				}
+			}else{
+				// Entity conains of only one word
+				vocab.add(entity_name_clear);
+			}
+			
 	    	line = br.readLine();
 	    	entities_counter++;
-		}   
+		}  
 	    br.close();
 	    //number of entities need increased by one to handle the zero entry
 	    numOfentities = entities_counter;
-	    System.out.println(numOfentities + " Entities loaded");
+	    System.out.println(numOfentities + " Entities loaded, containing of "+vocab.size()+" different words");
 	}
 	
 	public void loadRelationsFromSocherFile(String path) throws IOException{
@@ -164,6 +184,7 @@ public class DataFactory{
 	    String line = br.readLine();
 	    int trainings_tripple_counter = 0;
 	    while (line != null) {
+	    	//System.out.println(trainings_tripple_counter+ " line: "+line.split("\\s")[0]+"|"+line.split("\\s")[1]+"|"+line.split("\\s")[2]);
 	    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
 	    	int rel = relationsWordNum.get(line.split("\\s")[1]);
 	    	int e2 = entitiesWordNum.get(line.split("\\s")[2]);
@@ -226,7 +247,7 @@ public class DataFactory{
 
 	}
 	
-	public void loadWordVectorsFromMatFile(String path){
+	public void loadWordVectorsFromMatFile(String path, boolean optimizedLoad){
 		//load word vectors with a dimension of 100 from a matlab mat file
 		try {
 			MatFileReader matfilereader = new MatFileReader(path);
@@ -237,31 +258,51 @@ public class DataFactory{
 			MLDouble mlArrayDouble = (MLDouble) wordvectors_mat;
 			//INDArray wordvectormatrix = Nd4j.zeros(100,1); //100 dimension of word embeddings
 			String word;
+			int wvCounter=0;
 			for (int i = 0; i < mlArrayDouble.getSize()/100; i++) {
 				//System.out.println("word: "+words_mat.get(i).contentToString().substring(7,words_mat.get(i).contentToString().lastIndexOf("'")));				
 				//load word vector
 				word = words_mat.get(i).contentToString().substring(7,words_mat.get(i).contentToString().lastIndexOf("'"));
-				vocabNumWord.put(i, word);
-				vocabWordNum.put(word, i);
-				INDArray wordvector = Nd4j.zeros(100,1);
-				for (int j = 0; j < 100; j++) {
-					wordvector.put(j, 0, mlArrayDouble.get(i, j));	
+				vocab.add("unknown");
+				if (optimizedLoad==true) {
+					//only load word vectors which are needed for entity vectors
+					if (vocab.contains(word)) { //look up if there is an entity with this word
+						vocabNumWord.put(wvCounter, word);
+						vocabWordNum.put(word, wvCounter);
+						INDArray wordvector = Nd4j.zeros(100,1);
+						for (int j = 0; j < 100; j++) {
+							wordvector.put(j, 0, mlArrayDouble.get(i, j));	
+						}
+						
+						worvectorNumVec.put(wvCounter, wordvector);
+						worvectorWordVec.put(word, wordvector);	
+						wvCounter++;
+					}
+					
+				}else{
+					vocabNumWord.put(wvCounter, word);
+					vocabWordNum.put(word, wvCounter);
+					INDArray wordvector = Nd4j.zeros(100,1);
+					for (int j = 0; j < 100; j++) {
+						wordvector.put(j, 0, mlArrayDouble.get(i, j));	
+					}
+					worvectorNumVec.put(wvCounter, wordvector);
+					worvectorWordVec.put(word, wordvector);	
+					wvCounter++;
 				}
-				worvectorNumVec.put(i, wordvector);
-				worvectorWordVec.put(word, wordvector);					
+								
 			}
 			numOfWords = worvectorNumVec.size();
-			System.out.println(worvectorNumVec.size() +" Word Vectors loaded...");
+			System.out.println(worvectorNumVec.size() +" Word Vectors loaded... Counter: "+wvCounter);
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		//create a word vector matrix
 		wordVectorMaxtrixLoaded = Nd4j.zeros(100, numOfWords);
 		for (int i = 0; i < numOfWords; i++) {
+			//System.out.println("worvectorNumVec.get(i): "+worvectorNumVec.get(i));
 			wordVectorMaxtrixLoaded.putColumn(i, worvectorNumVec.get(i));
 		}
 		System.out.println("word vector matrix ready..."+wordVectorMaxtrixLoaded);

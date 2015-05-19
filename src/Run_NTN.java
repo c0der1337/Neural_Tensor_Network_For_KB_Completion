@@ -32,30 +32,32 @@ import edu.umass.nlp.utils.DoubleArrays;
 import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException {		
 		//Restrict data type to float to save memory
 		Nd4j.dtype = DataBuffer.FLOAT;
 		
 		//Data path
 		String data_path="";String theta_path="";
-		//if (args[0] ==null) {
+		try {
+			data_path = args[0];
+			theta_path = args[0];
+		} catch (Exception e) {
 			data_path = "C://Users//Patrick//Documents//master arbeit//original_code//data//Wordnet//";
 			theta_path = "C://Users//Patrick//Documents//master arbeit//";
-		//}else{
-		//	data_path = args[0];
-		//	theta_path = args[0];
-		//}
+		}
 
 		//Paramters
-		int batchSize = 5; 			//training batch size, socherr: 20.000
-		int numWVdimensions = 100; 		// size of the dimension of a word vector
-		int numIterations = 500; 		// number of optimization iterations, every iteration with a new training batch job, socherr: 500
-		int batch_iterations = 5;		// number of optimazation iterations for each batchs, socherr: 5
-		int sliceSize = 3; 				//number of slices in the tensor w and v
-		int corrupt_size = 3; 			// corruption size
-		int activation_function=1; 		//not implemented always sigmoid, tanh or [x] sigmoid
-		int numOfRelationsUsed=1;		// parameter is added to reduced the size of relations and to get faster results, not implemented
-		float lamda = 0.0001F;			// regulariization parameter
+		int batchSize = 20000; 				// training batch size, org: 20.000
+		int numWVdimensions = 100; 			// size of the dimension of a word vector org: 100
+		int numIterations = 500; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
+		int batch_iterations = 5;			// number of optimazation iterations for each batchs, org: 5
+		int sliceSize = 3; 					// number of slices in the tensor w and v
+		int corrupt_size = 3; 				// corruption size, org: 10
+		String activation_function= "tanh"; // [x] tanh or [] sigmoid, org:tanh
+		float lamda = 0.0001F;				// regularization parameter, org: 0.0001
+		boolean optimizedLoad=true;			// only load word vectors that are neede for entity vectors (>50% less), org: false
+		
+		System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
 		
 		//support utilities
 		Util u = new Util();	
@@ -66,7 +68,7 @@ public class Run_NTN {
 		tbj.loadTrainingDataTripplesE1rE2(data_path + "train.txt");
 		tbj.loadDevDataTripplesE1rE2Label(data_path + "dev.txt");
 		tbj.loadTestDataTripplesE1rE2Label(data_path + "test.txt");
-		tbj.loadWordVectorsFromMatFile(data_path + "initEmbed.mat");
+		tbj.loadWordVectorsFromMatFile(data_path + "initEmbed.mat",optimizedLoad);
 		
 		// Create the NTN and set the parameters for the NTN
 		NTN t = new NTN(numWVdimensions, tbj.getNumOfentities(), tbj.getNumOfRelations(), tbj.getNumOfWords(), batchSize, sliceSize, activation_function, tbj, lamda);
