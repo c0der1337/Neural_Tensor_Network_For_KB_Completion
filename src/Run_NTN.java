@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Random;
 
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -32,27 +33,30 @@ import edu.umass.nlp.utils.DoubleArrays;
 import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
-	public static void main(String[] args) throws IOException {		
+	public static void main(String[] args) throws IOException {
+		Random rand = new Random();
+		
 		//Restrict data type to float to save memory
 		Nd4j.dtype = DataBuffer.FLOAT;
 		
 		//Data path
-		String data_path="";String theta_path="";
+		String data_path="";String theta_save_path=""; String theta_load_path="";
 		try {
 			data_path = args[0];
-			theta_path = args[0];
+			theta_load_path = args[1];
+			theta_save_path = args[2];
 		} catch (Exception e) {
 			data_path = "C://Users//Patrick//Documents//master arbeit//original_code//data//Wordnet//";
-			theta_path = "C://Users//Patrick//Documents//master arbeit//";
+			theta_save_path = "C://Users//Patrick//Documents//master arbeit//";
 		}
 
 		//Paramters
-		int batchSize = 20000; 				// training batch size, org: 20.000
+		int batchSize = 20000; 				// training batch size, org: 20000
 		int numWVdimensions = 100; 			// size of the dimension of a word vector org: 100
-		int numIterations = 500; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
-		int batch_iterations = 5;			// number of optimazation iterations for each batchs, org: 5
+		int numIterations = 5; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
+		int batch_iterations = 500;			// number of optimazation iterations for each batchs, org: 5
 		int sliceSize = 3; 					// number of slices in the tensor w and v
-		int corrupt_size = 3; 				// corruption size, org: 10
+		int corrupt_size = 10; 				// corruption size, org: 10
 		String activation_function= "tanh"; // [x] tanh or [] sigmoid, org:tanh
 		float lamda = 0.0001F;				// regularization parameter, org: 0.0001
 		boolean optimizedLoad=true;			// only load word vectors that are neede for entity vectors (>50% less), org: false
@@ -75,35 +79,37 @@ public class Run_NTN {
 		t.connectDatafactory(tbj);
 		
 		//Load initialized parameters
-		double[] theta = t.getTheta_inital().data().asDouble();		
+		double[] theta = t.getTheta_inital().data().asDouble();
+		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
 		
 		//Train
 		for (int i = 0; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
 			tbj.generateNewTrainingBatchJob();
 			
-			//Set optimizer options: 5 iterations
+			
 			LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();
+			//Set optimizer options: 5 iterations
 			optimizerOpts.maxIters=batch_iterations;
 			
 			//Optimize the network using the training batch
 			IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
 			//System.out.println("result: " + DoubleArrays.toString(res.minArg));
-			System.out.println("paramters for batchjob optimized, current iteration: "+i);
+			System.out.println("Paramters for batchjob optimized, current iteration: "+i);
 			
 			theta = res.minArg;
 			
 			//Storing paramters to start from this iteration again:
-			Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_path+"//theta_opt_iteration_"+i+".txt", ",");		
+			Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");		
 		}		
 		// save optimized theta paramters
-		Nd4j.writeTxt(u.convertDoubleArrayToFlattenedINDArray(theta) , theta_path+"//theta_opt"+Calendar.getInstance().get(Calendar.DATE)+".txt", ",");
-		System.out.println("model saved!");
+		Nd4j.writeTxt(u.convertDoubleArrayToFlattenedINDArray(theta) , theta_save_path+"//theta_opt"+Calendar.getInstance().get(Calendar.DATE)+".txt", ",");
+		System.out.println("Model saved!");
 		
 		//Test
 		// Load test data to calculate predictions
 		INDArray best_theresholds = t.computeBestThresholds(u.convertDoubleArrayToFlattenedINDArray(theta), tbj.getDevTripples());
-		System.out.println("best_theresholds: "+best_theresholds);
+		System.out.println("Best theresholds: "+best_theresholds);
 		
 		//Calculate accuracy of the predictions and accuracy
 		INDArray predictions = t.getPrediction(u.convertDoubleArrayToFlattenedINDArray(theta), tbj.getTestTripples(), best_theresholds);

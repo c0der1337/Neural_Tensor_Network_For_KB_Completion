@@ -8,7 +8,7 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 public class Tripple {
 	private String entity1, relation, entity2, entity3_corrupt;
 	private int index_entity1, index_relation, index_entity2, index_entity3_corrupt;
-	private INDArray wordvector_entity1, wordvector_entity2;
+	//private INDArray wordvector_entity1, wordvector_entity2;
 	private int label; // for dev data -1=false, 1=true
 	private double score; // for dev data to save the score
 	private int prediction; // for test data -1=false, 1=true
@@ -34,6 +34,16 @@ public class Tripple {
 		this.relation = relation;
 		this.entity2 = entity2;
 		this.label = label;
+	}
+	Tripple(Tripple trainingTripple, int indexOfCorruptEntity3){
+		//This constructur is used to generate a training example with a random 3. label for a batchjob
+		this.index_entity1 = trainingTripple.getIndex_entity1();
+		this.index_relation = trainingTripple.getIndex_relation();
+		this.index_entity2 = trainingTripple.getIndex_entity2();
+		this.entity1 =trainingTripple.getEntity1();
+		this.relation = trainingTripple.getRelation();
+		this.entity2 = trainingTripple.getEntity2();
+		this.index_entity3_corrupt = indexOfCorruptEntity3;
 	}
 	
 	
@@ -74,18 +84,6 @@ public class Tripple {
 	public void setIndex_entity2(int index_entity2) {
 		this.index_entity2 = index_entity2;
 	}
-	public INDArray getWordvector_entity1() {
-		return wordvector_entity1;
-	}
-	public void setWordvector_entity1(INDArray wordvector_entity1) {
-		this.wordvector_entity1 = wordvector_entity1;
-	}
-	public INDArray getWordvector_entity2() {
-		return wordvector_entity2;
-	}
-	public void setWordvector_entity2(INDArray wordvector_entity2) {
-		this.wordvector_entity2 = wordvector_entity2;
-	}
 
 	public void setEntity3_corrupt(String entity3_corrupt) {
 		this.entity3_corrupt = entity3_corrupt;
@@ -93,14 +91,7 @@ public class Tripple {
 	public int getIndex_entity3_corrupt() {
 		return index_entity3_corrupt;
 	}
-	public int getIndex_entity3_corruptRANDOM(int maxNumOfEntity) {	
-		Random rand = new Random();
-		int random_corrupt_entity = rand.nextInt((maxNumOfEntity - 1) + 1) + 1;
-		return random_corrupt_entity;
-	}
-	public void setIndex_entity3_corrupt(int index_entity3_corrupt) {
-		this.index_entity3_corrupt = index_entity3_corrupt;
-	}
+	
 	public int getPrediction() {
 		return prediction;
 	}

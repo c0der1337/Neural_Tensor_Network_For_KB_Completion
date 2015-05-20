@@ -115,7 +115,6 @@ public class NTN implements IDifferentiableFn {
 			INDArray e2 = tbj.getEntitiy2IndexNumbers(tripplesOfRelationR);
 			INDArray rel = tbj.getRelIndexNumbers(tripplesOfRelationR);
 			INDArray e3 = tbj.getEntitiy3IndexNumbers(tripplesOfRelationR);
-			//System.out.println("e3: "+e3);
 			
 			// Initilize entity vector lists with zeros
 			INDArray entityVectors_e1 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
@@ -132,7 +131,7 @@ public class NTN implements IDifferentiableFn {
 				Tripple tripple = tripplesOfRelationR.get(j);
 				entityVectors_e1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
 				entityVectors_e2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
-				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corruptRANDOM(numberOfEntities-1)));
+				entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corrupt()));
 			}
 			
 			//arrayInfo(wordvectors_for_entities2, "wordvectors_for_entities2");
@@ -184,6 +183,7 @@ public class NTN implements IDifferentiableFn {
 			//System.out.println("score_neg: "+score_neg);
 	
 			//Filter for training examples, (that already predicted correct and dont need to be in account for further optimization of the paramters)			
+			// https://groups.google.com/forum/?hl=en#!topic/recursive-deep-learning/chDXI1S2RHU
 			INDArray indx = Nd4j.ones(score_pos.columns(),1); // indx: currently all entries are used for further optimization [1111111]
 			for (int i = 0; i < score_pos.columns(); i++) {
 				//System.out.println("score pos: " + score_pos.getRow(0).getFloat(i)+1 +" > "+score_neg.getRow(0).getFloat(i));
@@ -260,14 +260,19 @@ public class NTN implements IDifferentiableFn {
 				b_grad.put(r, Nd4j.zeros(1,sliceSize));
 			}
 						
-			//Calculate sparse matrixes (not implemented in ND4j)	
+			//Calculate sparse matrixes (not implemented in ND4j)	TODO bad performance
 			INDArray values = Nd4j.ones(numOfWrongExamples);
 			INDArray rows = Nd4j.arange(0, numOfWrongExamples+1);	
 			
 			INDArray e1_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
 			INDArray e2_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
 			INDArray e1_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+			// System.out.println("values: "+values+"| e2_neg_fil: "+e2_neg_filtered+"rows: "+rows+"numOfWrongExamples: "+numOfWrongExamples+"numOfEnti:"+numberOfEntities);
+			// e2_neg_filtered.putScalar(numOfWrongExamples-1, 38696);
+			// System.out.println("e2_neg_filtered: "+e2_neg_filtered);
 			INDArray e2_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+			//System.out.println("e2_neg_sparse: "+e2_neg_sparse);
+			//System.out.println("e2_neg_sparse shape: "+e2_neg_sparse.shape()[0]+"|"+e2_neg_sparse.shape()[1]);
 			
 			//Initialize w gradient for this relation
 			INDArray w_grad_for_r = Nd4j.create(embeddingSize,embeddingSize,sliceSize);
@@ -302,7 +307,7 @@ public class NTN implements IDifferentiableFn {
 					INDArray v4 = v_neg.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())).mmul(e2_neg_sparse);
 					entity_vectors_grad = entity_vectors_grad.add(v1).add(v2).add(v3).add(v4);
 					
-					// TODO Add contribution of 'W[i]' term in the entity vectors' gradient
+					// Add contribution of 'W[i]' term in the entity vectors' gradient
 					INDArray w1 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel).mulRowVector(temp_pos)).mul(e1_sparse);
 					INDArray w2 = new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel).mulRowVector(temp_pos).mul(e2_sparse);	
 					INDArray w3 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel_neg).mulRowVector(temp_neg)).mul(e1_neg_sparse);

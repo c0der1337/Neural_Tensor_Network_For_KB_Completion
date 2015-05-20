@@ -99,12 +99,16 @@ public class DataFactory{
 	public void generateNewTrainingBatchJob(){
 		batchjob.clear();
 		Collections.shuffle(trainingTripples);
+		Random rand = new Random();
 		for (int h = 0; h < corrupt_size; h++) {
 			for (int i = 0; i < batch_size; i++) {
-				//System.out.println("e1: "+trainingTripples.get(i).getEntity1()+" | e3:"+trainingTripples.get(i).getIndex_entity3_corrupt());
-				batchjob.add(trainingTripples.get(i));
+				//Set e3 as random corrupt tripple			
+				//min =0, max = maxIndexNumOfEntity << numOfEntity-1
+				// int randomNum = rand.nextInt((max - min) + 1) + min;
+				int random_corrupt_entity = rand.nextInt(((numOfentities-1) - 0) + 1) + 0;
+				batchjob.add(new Tripple(trainingTripples.get(i), random_corrupt_entity));
 				
-			}
+			}//System.out.println("e1: "+trainingTripples.get(i).getEntity1()+" | e3:"+trainingTripples.get(i).getIndex_entity3_corrupt());
 		}
 		System.out.println("Training Batch Job created and contains of "+batchjob.size()+" Trippels.");
 	}
@@ -157,7 +161,7 @@ public class DataFactory{
 	    br.close();
 	    //number of entities need increased by one to handle the zero entry
 	    numOfentities = entities_counter;
-	    System.out.println(numOfentities + " Entities loaded, containing of "+vocab.size()+" different words");
+	    System.out.println(numOfentities + " Entities loaded, containing of "+vocab.size()+" different words| last entity:"+entitiesNumWord.get(entitiesNumWord.size()-1));
 	}
 	
 	public void loadRelationsFromSocherFile(String path) throws IOException{
@@ -194,13 +198,6 @@ public class DataFactory{
 	    	trainings_tripple_counter++;
 		}   
 	    br.close();
-	    //generate the corrupt 3. tripple
-		for (Tripple tripple : trainingTripples) {	
-			Random rand = new Random();
-			int random_corrupt_entity = rand.nextInt((numOfentities - 1) + 1) + 1; //rand.nextInt((max - min) + 1) + min		
-			//System.out.println("random_corrupt_entity: "+random_corrupt_entity);
-			tripple.setIndex_entity3_corrupt(random_corrupt_entity);
-		}
 	    System.out.println(trainings_tripple_counter+" Training Examples loaded...");
 	}
 	
