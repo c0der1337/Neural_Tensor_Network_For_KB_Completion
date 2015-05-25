@@ -60,4 +60,31 @@ public class Util {
 		return denseMatrix;
 	}
 	
+	public INDArray MatrixX_mmul_CSRMatrix(INDArray x, INDArray values, INDArray entitylist, INDArray rows, int sparseShape_rowSize, int sparseShape_columns){
+		//System.out.println("x: "+x.shape()[0]+"|"+x.shape()[1]+" - values:"+values.shape()[0]+" - entitylist:"+entitylist.shape()[0]+" - rows: "+rows.shape()[0]+" m: "+sparseShape_rowSize+"n: "+sparseShape_columns);
+		// x is a non sparse / dense matrix with same size of columns as the number of rows of the sparse matrix
+		// values: (also called data) are the non zero values
+		// entitylist is similar to indices for the columns
+		// rows is the rowpointer (not correct implemented, because every row has only 1 value)
+		
+		//create the result array for this multiplication
+		INDArray resultArr = Nd4j.zeros(x.rows(),sparseShape_columns);
+		
+		// multiply the dense matrix x with the sparse values stores in CSR format
+		for (int rowsOfX = 0; rowsOfX < x.rows(); rowsOfX++) {
+			for (int row = 0; row < rows.length()-1; row++) {
+				//System.out.println("row: "+row);
+				int column = entitylist.getInt(row);
+				double currX = x.getDouble(rowsOfX,row);
+				double currVal = values.getDouble(row);
+				double z = currX  * currVal;
+				z = z + resultArr.getDouble(rowsOfX,column);
+				resultArr.put(rowsOfX,column, z);
+				//System.out.println(resultArr);
+			}
+		}
+		return resultArr;
+	}
+	
+	
 }

@@ -1,6 +1,9 @@
 
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -87,6 +90,7 @@ public class NTN implements IDifferentiableFn {
 	@Override
 	public IPair<Double, double[]> computeAt(double[] _theta) {
 		// Load input paramter(theta) into corresponding INDArray variables for loss / cost computation
+		String started = ""+new Date().toString();
 		stackToParameters(new Util().convertDoubleArrayToFlattenedINDArray(_theta));
 		
 		// Initialize entity vectors and their gradient as matrix of zeros
@@ -260,18 +264,18 @@ public class NTN implements IDifferentiableFn {
 				b_grad.put(r, Nd4j.zeros(1,sliceSize));
 			}
 						
-			//Calculate sparse matrixes (not implemented in ND4j)	TODO bad performance
+			// Calculate sparse matrixes (not implemented in ND4j)	TODO bad performance
 			INDArray values = Nd4j.ones(numOfWrongExamples);
 			INDArray rows = Nd4j.arange(0, numOfWrongExamples+1);	
 			
-			INDArray e1_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
-			INDArray e2_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
-			INDArray e1_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+			// INDArray e1_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
+			// INDArray e2_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
+			// INDArray e1_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
 			// System.out.println("values: "+values+"| e2_neg_fil: "+e2_neg_filtered+"rows: "+rows+"numOfWrongExamples: "+numOfWrongExamples+"numOfEnti:"+numberOfEntities);
 			// e2_neg_filtered.putScalar(numOfWrongExamples-1, 38696);
 			// System.out.println("e2_neg_filtered: "+e2_neg_filtered);
-			INDArray e2_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
-			//System.out.println("e2_neg_sparse: "+e2_neg_sparse);
+			// INDArray e2_neg_sparse = new Util().getDenseMatrixWithSparseMatrixCRSData(values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+			// System.out.println("e2_neg_sparse: "+e2_neg_sparse);
 			//System.out.println("e2_neg_sparse shape: "+e2_neg_sparse.shape()[0]+"|"+e2_neg_sparse.shape()[1]);
 			
 			//Initialize w gradient for this relation
@@ -300,18 +304,21 @@ public class NTN implements IDifferentiableFn {
 					INDArray kth_slice_of_v = v.get(r).getColumn(k); //slice is the column
 					INDArray v_pos = kth_slice_of_v.mmul(temp_pos);
 					INDArray v_neg = kth_slice_of_v.mmul(temp_neg);
-					
-					INDArray v1 = v_pos.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns())).mmul(e1_sparse);
-					INDArray v2 = v_pos.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())).mmul(e2_sparse);
-					INDArray v3 = v_neg.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns())).mmul(e1_neg_sparse);
-					INDArray v4 = v_neg.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())).mmul(e2_neg_sparse);
+			
+					// rows: 100|cols: 360 * _e1_sparse: rows: 360|cols: 38696
+					INDArray temp = v_pos.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns()));
+					INDArray v1 = new Util().MatrixX_mmul_CSRMatrix(temp, values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray v2 = new Util().MatrixX_mmul_CSRMatrix(v_pos.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())), values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray v3 = new Util().MatrixX_mmul_CSRMatrix(v_neg.get(NDArrayIndex.interval(0,embeddingSize),NDArrayIndex.interval(0,v_pos.columns())), values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray v4 = new Util().MatrixX_mmul_CSRMatrix(v_neg.get(NDArrayIndex.interval(embeddingSize,2*embeddingSize-1),NDArrayIndex.interval(0,v_pos.columns())), values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
 					entity_vectors_grad = entity_vectors_grad.add(v1).add(v2).add(v3).add(v4);
 					
 					// Add contribution of 'W[i]' term in the entity vectors' gradient
-					INDArray w1 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel).mulRowVector(temp_pos)).mul(e1_sparse);
-					INDArray w2 = new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel).mulRowVector(temp_pos).mul(e2_sparse);	
-					INDArray w3 = (new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel_neg).mulRowVector(temp_neg)).mul(e1_neg_sparse);
-					INDArray w4 = new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel_neg).mulRowVector(temp_neg).mul(e2_neg_sparse);
+					// rows: 100|cols: 444 * _e1_sparse: rows: 444|cols: 38696
+					INDArray w1 = new Util().MatrixX_mmul_CSRMatrix(new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel).mulRowVector(temp_pos), values,e1_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray w2 = new Util().MatrixX_mmul_CSRMatrix(new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel).mulRowVector(temp_pos), values,e2_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray w3 = new Util().MatrixX_mmul_CSRMatrix(new Util().getSliceOfaTensor(w.get(r), k).mmul(entVecE2Rel_neg).mulRowVector(temp_neg), values,e1_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
+					INDArray w4 = new Util().MatrixX_mmul_CSRMatrix(new Util().getSliceOfaTensor(w.get(r), k).transpose().mmul(entVecE1Rel_neg).mulRowVector(temp_neg), values,e2_neg_filtered,rows,numOfWrongExamples,numberOfEntities);
 					
 					entity_vectors_grad = entity_vectors_grad.add(w1).add(w2).add(w3).add(w4);
 					
@@ -359,7 +366,7 @@ public class NTN implements IDifferentiableFn {
 		//Add regularization term to the cost and gradient	
 		cost = cost + (0.5F * (lamda * Nd4j.sum(theta.mul(theta)).getFloat(0)));
 		theta_grad = theta_grad.add(theta.mul(lamda));
-		System.out.println("Cost: "+cost+"| Amount of Tripples updated: "+update+" from batchsize: "+batchSize);
+		System.out.println("Cost: "+cost+"| Amount of Tripples updated: "+update+"| start: "+started+" |end: "+new Date().toString());
 		
 		/*Alternative RETURN values old: cost, theta_grad
 		ArrayList<Object> cost_theta_grad = new ArrayList<>();
@@ -625,7 +632,7 @@ public class NTN implements IDifferentiableFn {
 			score_temp = score_temp + score.getDouble(0);
 		}
 		_tripple.setScore(score_temp);
-		//System.out.println(tripple + " | score: "+tripple.getScore());
+		System.out.println(_tripple.toString() + " | score: "+_tripple.getScore()+" | label: "+_tripple.getLabel());
 		return score_temp;
 	}
 	

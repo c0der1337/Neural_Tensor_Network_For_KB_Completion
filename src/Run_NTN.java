@@ -34,6 +34,23 @@ import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
 	public static void main(String[] args) throws IOException {
+		/*INDArray normalMatrix = Nd4j.create(new float[]{1,2,3,4,5,6},new int[]{2,3});
+		System.out.println("normalMatrix: "+normalMatrix);
+		INDArray entityList = Nd4j.zeros(3);
+		entityList.putScalar(0, 1);entityList.putScalar(1, 3);entityList.putScalar(2, 1);
+		System.out.println("entityList: "+entityList);
+		INDArray x = Nd4j.rand(1,3);
+		//new Util().multCSRMAtrixWithVector2(x, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
+		INDArray dense = new Util().getDenseMatrixWithSparseMatrixCRSData(Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
+		x = Nd4j.rand(2,3);
+		System.out.println("x: "+x);
+		System.out.println("dense: " +dense);
+		System.out.println("mul: "+ x.mul(dense));
+		System.out.println("mmul: "+x.mmul(dense));
+		int numOfWrongTest = 3;
+		System.out.println("csr: "+new Util().MatrixX_mmul_CSRMatrix(x, Nd4j.ones(numOfWrongTest), entityList, Nd4j.arange(0, numOfWrongTest+1), numOfWrongTest,4));
+		//System.out.println(new Util().multCSRMatrix(normalMatrix, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4));
+		*/
 		Random rand = new Random();
 		
 		//Restrict data type to float to save memory
@@ -53,13 +70,13 @@ public class Run_NTN {
 		//Paramters
 		int batchSize = 20000; 				// training batch size, org: 20000
 		int numWVdimensions = 100; 			// size of the dimension of a word vector org: 100
-		int numIterations = 5; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
-		int batch_iterations = 500;			// number of optimazation iterations for each batchs, org: 5
+		int numIterations = 500; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
+		int batch_iterations = 5;			// number of optimazation iterations for each batchs, org: 5
 		int sliceSize = 3; 					// number of slices in the tensor w and v
 		int corrupt_size = 10; 				// corruption size, org: 10
 		String activation_function= "tanh"; // [x] tanh or [] sigmoid, org:tanh
 		float lamda = 0.0001F;				// regularization parameter, org: 0.0001
-		boolean optimizedLoad=true;			// only load word vectors that are neede for entity vectors (>50% less), org: false
+		boolean optimizedLoad=false;		// only load word vectors that are neede for entity vectors (>50% less), org: false
 		
 		System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
 		
@@ -81,7 +98,7 @@ public class Run_NTN {
 		//Load initialized parameters
 		double[] theta = t.getTheta_inital().data().asDouble();
 		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
-		
+
 		//Train
 		for (int i = 0; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
