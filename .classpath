@@ -6,16 +6,16 @@
 	<classpathentry kind="lib" path="umass-nlp-1.0-SNAPSHOT.jar"/>
 	<classpathentry kind="lib" path="jmatio.jar"/>
 	<classpathentry kind="lib" path="commons-math3-3.5.jar"/>
-	<classpathentry kind="lib" path="nd4j-api-0.0.3.5.5.3-SNAPSHOT.jar"/>
 	<classpathentry kind="lib" path="guava-18.0.jar"/>
 	<classpathentry kind="lib" path="spring-core-4.1.4.RELEASE.jar"/>
-	<classpathentry kind="lib" path="nd4j-instrumentation-0.0.3.5.5.3-SNAPSHOT.jar"/>
-	<classpathentry kind="lib" path="nd4j-jblas-0.0.3.5.5.3-SNAPSHOT.jar"/>
 	<classpathentry kind="lib" path="jblas-1.2.3.jar"/>
 	<classpathentry kind="lib" path="slf4j-api-1.7.10.jar"/>
 	<classpathentry kind="lib" path="log4j-1.2.17.jar"/>
 	<classpathentry kind="lib" path="commons-lang3-3.3.1.jar"/>
 	<classpathentry kind="lib" path="commons-primitives-1.0.jar"/>
 	<classpathentry kind="lib" path="slf4j-log4j12-1.7.6.jar"/>
+	<classpathentry kind="lib" path="nd4j-api-0.0.3.5.5.3-SNAPSHOT.jar"/>
+	<classpathentry kind="lib" path="nd4j-instrumentation-0.0.3.5.5.3-SNAPSHOT.jar"/>
+	<classpathentry kind="lib" path="nd4j-jblas-0.0.3.5.5.3-SNAPSHOT.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

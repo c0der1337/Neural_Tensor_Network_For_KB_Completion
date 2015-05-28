@@ -33,26 +33,7 @@ import edu.umass.nlp.utils.DoubleArrays;
 import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
-	public static void main(String[] args) throws IOException {
-		/*INDArray normalMatrix = Nd4j.create(new float[]{1,2,3,4,5,6},new int[]{2,3});
-		System.out.println("normalMatrix: "+normalMatrix);
-		INDArray entityList = Nd4j.zeros(3);
-		entityList.putScalar(0, 1);entityList.putScalar(1, 3);entityList.putScalar(2, 1);
-		System.out.println("entityList: "+entityList);
-		INDArray x = Nd4j.rand(1,3);
-		//new Util().multCSRMAtrixWithVector2(x, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
-		INDArray dense = new Util().getDenseMatrixWithSparseMatrixCRSData(Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
-		x = Nd4j.rand(2,3);
-		System.out.println("x: "+x);
-		System.out.println("dense: " +dense);
-		System.out.println("mul: "+ x.mul(dense));
-		System.out.println("mmul: "+x.mmul(dense));
-		int numOfWrongTest = 3;
-		System.out.println("csr: "+new Util().MatrixX_mmul_CSRMatrix(x, Nd4j.ones(numOfWrongTest), entityList, Nd4j.arange(0, numOfWrongTest+1), numOfWrongTest,4));
-		//System.out.println(new Util().multCSRMatrix(normalMatrix, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4));
-		*/
-		Random rand = new Random();
-		
+	public static void main(String[] args) throws IOException {		
 		//Restrict data type to float to save memory
 		Nd4j.dtype = DataBuffer.FLOAT;
 		
@@ -100,11 +81,11 @@ public class Run_NTN {
 		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
 
 		//Train
-		for (int i = 0; i < numIterations; i++) { 
+
+		for (int i = 1; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
 			tbj.generateNewTrainingBatchJob();
-			
-			
+					
 			LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();
 			//Set optimizer options: 5 iterations
 			optimizerOpts.maxIters=batch_iterations;
@@ -112,7 +93,7 @@ public class Run_NTN {
 			//Optimize the network using the training batch
 			IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
 			//System.out.println("result: " + DoubleArrays.toString(res.minArg));
-			System.out.println("Paramters for batchjob optimized, current iteration: "+i);
+			System.out.println("Paramters for batchjob optimized, iteration: "+i+" completed");
 			
 			theta = res.minArg;
 			
@@ -124,6 +105,7 @@ public class Run_NTN {
 		System.out.println("Model saved!");
 		
 		//Test
+		System.out.println("Accuracy Test starting with "+theta_load_path);
 		// Load test data to calculate predictions
 		INDArray best_theresholds = t.computeBestThresholds(u.convertDoubleArrayToFlattenedINDArray(theta), tbj.getDevTripples());
 		System.out.println("Best theresholds: "+best_theresholds);
