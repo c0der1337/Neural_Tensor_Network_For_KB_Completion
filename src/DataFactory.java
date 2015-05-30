@@ -302,6 +302,8 @@ public class DataFactory{
 			//System.out.println("worvectorNumVec.get(i): "+worvectorNumVec.get(i));
 			wordVectorMaxtrixLoaded.putColumn(i, worvectorNumVec.get(i));
 		}
+		
+		//wordVectorMaxtrixLoaded reduce values
 		System.out.println("word vector matrix ready..."+wordVectorMaxtrixLoaded);
 	}
 	
@@ -336,6 +338,43 @@ public class DataFactory{
 				} catch (Exception e) {
 					// if no word vector available, use "unknown" word vector
 					entity_vectors.putColumn(i, worvectorWordVec.get("unknown"));
+				}			
+			}		
+		}
+		return entity_vectors;
+	}
+	
+	public INDArray createVectorsForEachEntityByWordVectors(INDArray updatedWVMatrix){
+		INDArray entity_vectors = Nd4j.zeros(embeddings_size,numOfentities);
+		for (int i = 0; i < entitiesNumWord.size(); i++) {
+			String entity_name; //clear name without _  __name_ -> name
+			try {
+				entity_name = entitiesNumWord.get(i).substring(2, entitiesNumWord.get(i).lastIndexOf("_"));
+			} catch (Exception e) {
+				entity_name =entitiesNumWord.get(i).substring(2);			
+			}
+			//System.out.println("entity: "+entitiesNumWord.get(i)+" | word: "+entity_name);			
+			
+			if (entity_name.contains("_")) { //whitespaces are _
+				//Entity conains of more than one word
+				INDArray entityvector = Nd4j.zeros(embeddings_size, 1);
+				for (int j = 0; j <entitiesNumWord.get(i).split("_").length; j++) {
+					try {
+						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get(entity_name.split("_")[j])));
+					} catch (Exception e) {
+						//if no word vector available, use "unknown" word vector
+						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
+					}			
+				}
+				entityvector = entityvector.div(entity_name.split("_").length);
+				entity_vectors.putColumn(i, entityvector);
+			}else{
+				// Entity conains of only one word
+				try {
+					entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get(entity_name)));
+				} catch (Exception e) {
+					// if no word vector available, use "unknown" word vector
+					entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
 				}			
 			}		
 		}

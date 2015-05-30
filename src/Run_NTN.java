@@ -25,6 +25,7 @@ import com.jmatio.types.MLChar;
 import com.jmatio.types.MLDouble;
 import com.jmatio.types.MLNumericArray;
 
+import edu.stanford.nlp.optimization.QNMinimizer;
 import edu.umass.nlp.optimize.IDifferentiableFn;
 import edu.umass.nlp.optimize.IOptimizer;
 import edu.umass.nlp.optimize.LBFGSMinimizer;
@@ -58,8 +59,10 @@ public class Run_NTN {
 		String activation_function= "tanh"; // [x] tanh or [] sigmoid, org:tanh
 		float lamda = 0.0001F;				// regularization parameter, org: 0.0001
 		boolean optimizedLoad=false;		// only load word vectors that are neede for entity vectors (>50% less), org: false
+		boolean minimizer = true;			// UMAS Minimizer = true, Stanford NLP Core QN Minimizer = false
+
 		
-		System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
+		//System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
 		
 		//support utilities
 		Util u = new Util();	
@@ -76,34 +79,38 @@ public class Run_NTN {
 		NTN t = new NTN(numWVdimensions, tbj.getNumOfentities(), tbj.getNumOfRelations(), tbj.getNumOfWords(), batchSize, sliceSize, activation_function, tbj, lamda);
 		t.connectDatafactory(tbj);
 		
-		//Load initialized parameters
-		double[] theta = t.getTheta_inital().data().asDouble();
-		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
+		//Load initialized parameters via file or via random
+		//double[] theta = t.getTheta_inital().data().asDouble();
+		double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
 
-		//Train
+		//Train	
 
-		for (int i = 1; i < numIterations; i++) { 
+		for (int i = 0; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
 			tbj.generateNewTrainingBatchJob();
-					
-			LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();
-			//Set optimizer options: 5 iterations
-			optimizerOpts.maxIters=batch_iterations;
 			
-			//Optimize the network using the training batch
-			IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
-			//System.out.println("result: " + DoubleArrays.toString(res.minArg));
-			System.out.println("Paramters for batchjob optimized, iteration: "+i+" completed");
-			
-			theta = res.minArg;
-			
+			if (minimizer == true) {
+				//Initilize optimizer and set optimizer options to 5 iterations
+				LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();				
+				optimizerOpts.maxIters=batch_iterations;	
+				//Optimize the network using the training batch
+				IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
+				System.out.println("res: "+res.didConverge + "| "+res.minObjVal);
+				theta = res.minArg;
+			}else{
+				QNMinimizer qn = new QNMinimizer() ;
+			    qn.terminateOnMaxItr(5);
+				theta = qn.minimize(t, 0, theta);
+			}
+			System.out.println("Paramters for batchjob optimized, iteration: "+i+" completed");	
+
 			//Storing paramters to start from this iteration again:
 			Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");		
 		}		
 		// save optimized theta paramters
 		Nd4j.writeTxt(u.convertDoubleArrayToFlattenedINDArray(theta) , theta_save_path+"//theta_opt"+Calendar.getInstance().get(Calendar.DATE)+".txt", ",");
 		System.out.println("Model saved!");
-		
+
 		//Test
 		System.out.println("Accuracy Test starting with "+theta_load_path);
 		// Load test data to calculate predictions

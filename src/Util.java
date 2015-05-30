@@ -104,8 +104,6 @@ public class Util {
 		for (int i = 0; i < x.columns(); i++) {
 			tranposed.putRow(i, x.transpose().getRow(i));
 		}
-		
-		
 		return tranposed;
 	}
 

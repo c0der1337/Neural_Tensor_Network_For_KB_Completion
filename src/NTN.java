@@ -10,11 +10,14 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 
+import com.sun.corba.se.spi.ior.MakeImmutable;
+
+import edu.stanford.nlp.optimization.DiffFunction;
 import edu.umass.nlp.optimize.IDifferentiableFn;
 import edu.umass.nlp.utils.BasicPair;
 import edu.umass.nlp.utils.IPair;
 
-public class NTN implements IDifferentiableFn {
+public class NTN implements IDifferentiableFn, DiffFunction {
 	
 	int embeddingSize; 			// 100 size of a single word vector
 	int numberOfEntities;
@@ -26,6 +29,8 @@ public class NTN implements IDifferentiableFn {
 	INDArray theta_inital; 		// stacked paramters after initlization of NTN
 	int dimension_for_minimizer;// dimensions / size of theta for the minimizer
 	String activationFunc;		// "tanh" or "sigmoid"
+	IPair<double[], Object> theta_CostIP;
+	boolean lastRandom;
    
 	//Network Parameters - Integer identifies the relation, there are different parameters for each relation
 	HashMap<Integer, INDArray> w;
@@ -70,11 +75,10 @@ public class NTN implements IDifferentiableFn {
 			b.put(i, Nd4j.zeros(1,sliceSize));
 			u.put(i, Nd4j.ones(sliceSize,1));				
 		}
-		
 		// Initialize WordVectors via loaded Vectors
-		wordvectors = tbj.getWordVectorMaxtrixLoaded();
+		 wordvectors = tbj.getWordVectorMaxtrixLoaded();
 		// For random wordVector initialization:
-		//wordvectors = Nd4j.rand(embeddingSize,numberOfWords).muli(0.0001);
+		//wordvectors = Nd4j.rand(embeddingSize,numberOfWords).mul(0.0001);
 		
 		// Unroll the parameters into a vector
 		theta_inital = parametersToStack(w, v, b, u, wordvectors);
@@ -98,7 +102,7 @@ public class NTN implements IDifferentiableFn {
 		INDArray entity_vectors_grad = Nd4j.zeros(embeddingSize, numberOfEntities);
 		
 		//Assign entity vectors to be the mean of word vectors involved		
-		entity_vectors= tbj.createVectorsForEachEntityByWordVectors();
+		entity_vectors= tbj.createVectorsForEachEntityByWordVectors(wordvectors);
 		
 		// Initialize cost as zero
 		Float cost = 0F;
@@ -146,11 +150,13 @@ public class NTN implements IDifferentiableFn {
 				entityVectors_e2_neg = entityVectors_e3;
 				e1_neg = e1;
 				e2_neg = e3;
+				lastRandom = true;
 			}else{
 				entityVectors_e1_neg = entityVectors_e3;
 				entityVectors_e2_neg = entityVectors_e2;
 				e1_neg = e3;
 				e2_neg = e2;
+				lastRandom = false;
 			}
 			//arrayInfo(wordvectors_for_entities1, "wordvectors_for_entities1");
 				
@@ -248,7 +254,11 @@ public class NTN implements IDifferentiableFn {
 				
 			// Calculate U[r] gradient
 			if (tripplesOfRelationR.size()!=0 & numOfWrongExamples!=0) {
-				u_grad.put(r, Nd4j.sum(z_activation_pos.sub(z_activation_neg),1).reshape(sliceSize, 1)) ;
+				if (z_activation_pos.columns()>1) {
+					u_grad.put(r, Nd4j.sum(z_activation_pos.sub(z_activation_neg),1).reshape(sliceSize, 1)) ;
+				}else{
+					u_grad.put(r, z_activation_pos.sub(z_activation_neg).reshape(sliceSize, 1)) ;
+				}				
 			}else{
 				// Filling with zeros if there is no training example from which the gradients could be calculated
 				u_grad.put(r, Nd4j.zeros(sliceSize,1));
@@ -260,10 +270,14 @@ public class NTN implements IDifferentiableFn {
 			
 			// Calculate 'b[r]' gradient
 			if (tripplesOfRelationR.size()!=0 & numOfWrongExamples!=0) {
-				b_grad.put(r, Nd4j.sum(temp_pos_all.add(temp_neg_all),1).reshape(1, sliceSize)) ;
+				if (temp_pos_all.columns()>1) {
+					b_grad.put(r, Nd4j.sum(temp_pos_all.add(temp_neg_all),1).reshape(1, sliceSize)) ;
+				}else{
+					b_grad.put(r, (temp_pos_all.add(temp_neg_all)).getColumn(0).reshape(1, sliceSize)) ;
+				}		
 			}else{
 				// Filling with zeros if there is no training example from which the gradients could be calculated
-				b_grad.put(r, Nd4j.zeros(1,sliceSize));
+				b_grad.put(r, Nd4j.zeros(1,sliceSize).reshape(1, sliceSize));
 			}
 						
 			// Calculate some values that are necessary for further compressed sparse row computations (not implemented in ND4j, with dense matrix: bad performance)
@@ -277,8 +291,8 @@ public class NTN implements IDifferentiableFn {
 			
 			//Initialize w gradient for this relation
 			INDArray w_grad_for_r = Nd4j.create(embeddingSize,embeddingSize,sliceSize);
+			w_grad.put(r,w_grad_for_r);
 			if (tripplesOfRelationR.size()!=0 & numOfWrongExamples!=0) {			
-				ArrayList<INDArray> w_grad_slices = new ArrayList<INDArray>();
 				for (int k = 0; k < sliceSize; k++) {				
 					// U * f'(z) values corresponding to one slice
 					INDArray temp_pos = temp_pos_all.getRow(k);
@@ -289,12 +303,15 @@ public class NTN implements IDifferentiableFn {
 					INDArray w_grad_k_slice = (entVecE1Rel.mulRowVector(temp_pos)).mmul(new Util().transpose(entVecE2Rel)).add((entVecE1Rel_neg.mulRowVector(temp_neg)).mmul(new Util().transpose(entVecE2Rel_neg)));
 					
 					// PRÜFEN, AUSKOMMENTIEREN WENN ND4J SLICE ISSUE BEHOBEN IST: Illegal assignment, must be of same length
-					//w_grad_slices.add(w_grad_k_slice);
-					w_grad.put(r, new Util().putSliceOfaTensor(w_grad_for_r, k, w_grad_k_slice));
+					w_grad.put(r, new Util().putSliceOfaTensor(w_grad.get(r), k, w_grad_k_slice));
 					
 					//Calculate 'k'th slice of V gradient				
-					//INDArray temparray = (eVstack.mulRowVector(temp_pos)).add(eVstack_neg.mulRowVector(temp_neg));	
-					INDArray sum_v = Nd4j.sum(Nd4j.vstack(entVecE1Rel,entVecE2Rel).mulRowVector(temp_pos).add(Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg).mulRowVector(temp_neg)),1);
+					INDArray sum_v;
+					if (temp_pos.columns()>1) {
+						sum_v = Nd4j.sum(Nd4j.vstack(entVecE1Rel,entVecE2Rel).mulRowVector(temp_pos).add(Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg).mulRowVector(temp_neg)),1);
+					}else{
+						sum_v = Nd4j.vstack(entVecE1Rel,entVecE2Rel).mulRowVector(temp_pos).add(Nd4j.vstack(entVecE1Rel_neg,entVecE2Rel_neg).mulRowVector(temp_neg));
+					}
 					v_grad.get(r).putColumn(k, sum_v);
 					
 					// Add contribution of V term in the entity vectors' gradient				
@@ -589,12 +606,15 @@ public class NTN implements IDifferentiableFn {
 	}
 	private double calculateScoreOfaTripple(Tripple _tripple, INDArray _entity_vectors){
 		//Get entity 1 and 2 for examples of ith relation
-		INDArray entityVector1 = _entity_vectors.getColumn(_tripple.getIndex_entity1());
-		INDArray entityVector2 = _entity_vectors.getColumn(_tripple.getIndex_entity2());
+		INDArray entityVector1 = _entity_vectors.getColumn(_tripple.getIndex_entity1()).linearView();
+		INDArray entityVector2 = _entity_vectors.getColumn(_tripple.getIndex_entity2()).linearView();
 		int rel = _tripple.getIndex_relation();
 		
-		// TODO concat instate vstack used, because Issue #87 in nd4j
-		//INDArray entity_stack = Nd4j.vstack(entityVector1,entityVector2);
+		// TODO vstack Issue #87 in nd4j
+		/*INDArray entity_stack = Nd4j.vstack(entityVector1,entityVector2);
+		INDArray entity_stack = Nd4j.vstack(Nd4j.ones(1,100),Nd4j.zeros(1,100));
+		entity_stack.putRow(0, entityVector1);
+		entity_stack.putRow(1, entityVector2);*/
 		INDArray entity_stack = Nd4j.concat(0,entityVector1,entityVector2);
 		
 		// Calculate the prdediction score for the ith example
@@ -638,5 +658,145 @@ public class NTN implements IDifferentiableFn {
 
 	public void connectDatafactory(DataFactory tbj) {
 		this.tbj = tbj;
+	}
+	@Override
+	public int domainDimension() {
+		return dimension_for_minimizer;
+	}
+
+	@Override
+	public double valueAt(double[] _thetaD) {
+		if (_thetaD.equals(theta_CostIP.getFirst())) {
+			System.out.println("Cost: " +theta_CostIP.getSecond());
+			return (double) theta_CostIP.getSecond();	
+		}else {
+
+			// Load input paramter(theta) into corresponding INDArray variables for loss / cost computation
+			String started = ""+new Date().toString();
+			stackToParameters(new Util().convertDoubleArrayToFlattenedINDArray(_thetaD));
+			
+			// Initialize entity vectors and their gradient as matrix of zeros
+			INDArray entity_vectors = Nd4j.zeros(embeddingSize, numberOfEntities);
+			
+			//Assign entity vectors to be the mean of word vectors involved		
+			entity_vectors= entity_vectors= tbj.createVectorsForEachEntityByWordVectors(wordvectors);
+			
+			// Initialize cost as zero
+			Float cost = 0F;
+			
+			for (int r = 0; r < numberOfRelations; r++) {			
+				// Get a list of examples / tripples for the ith relation
+				ArrayList<Tripple> tripplesOfRelationR = tbj.getBatchJobTripplesOfRelation(r);
+				//System.out.println(tripplesOfRelationR.size()+" Trainingsexample for relation r="+r);
+				
+				// Initlize entity and rel index lists
+				INDArray e1 = tbj.getEntitiy1IndexNumbers(tripplesOfRelationR);
+				INDArray e2 = tbj.getEntitiy2IndexNumbers(tripplesOfRelationR);
+				INDArray rel = tbj.getRelIndexNumbers(tripplesOfRelationR);
+				INDArray e3 = tbj.getEntitiy3IndexNumbers(tripplesOfRelationR);
+				
+				// Initilize entity vector lists with zeros
+				INDArray entityVectors_e1 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+				INDArray entityVectors_e2 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+				INDArray entityVectors_e3 = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});		
+				INDArray entityVectors_e1_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+				INDArray entityVectors_e2_neg = Nd4j.zeros(new int[]{embeddingSize,tripplesOfRelationR.size()});
+				INDArray e1_neg = Nd4j.zeros(e1.shape());
+				INDArray e2_neg = Nd4j.zeros(e1.shape());
+				
+				// Get only entity vectors of training examples of the this / rth relation
+				//System.out.println("numberOfEntities: "+numberOfEntities);
+				for (int j = 0; j < tripplesOfRelationR.size(); j++) {
+					Tripple tripple = tripplesOfRelationR.get(j);
+					entityVectors_e1.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity1()));
+					entityVectors_e2.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity2()));
+					entityVectors_e3.putColumn(j, entity_vectors.getColumn(tripple.getIndex_entity3_corrupt()));
+				}
+				
+				//arrayInfo(wordvectors_for_entities2, "wordvectors_for_entities2");
+				
+				// Choose entity vectors for negative training example based on random
+				if (lastRandom==true) {
+					entityVectors_e1_neg = entityVectors_e1;
+					entityVectors_e2_neg = entityVectors_e3;
+					e1_neg = e1;
+					e2_neg = e3;
+				}else{
+					entityVectors_e1_neg = entityVectors_e3;
+					entityVectors_e2_neg = entityVectors_e2;
+					e1_neg = e3;
+					e2_neg = e2;
+				}
+				//arrayInfo(wordvectors_for_entities1, "wordvectors_for_entities1");
+					
+				// Initialize pre-activations of the tensor network as matrix of zeros
+				INDArray preactivation_pos = Nd4j.zeros(sliceSize, tripplesOfRelationR.size());
+				INDArray preactivation_neg = Nd4j.zeros(sliceSize, tripplesOfRelationR.size());
+		
+				// Add contribution of W
+				INDArray wOfThisRelation = w.get(r);
+				for (int slice = 0; slice < sliceSize; slice++) {
+					INDArray sliceOfW = new Util().getSliceOfaTensor(wOfThisRelation, slice);		
+					preactivation_pos.putRow(slice, Nd4j.sum(entityVectors_e1.mul(sliceOfW.mmul(entityVectors_e2)), 0));
+					preactivation_neg.putRow(slice, Nd4j.sum(entityVectors_e1_neg.mul(sliceOfW.mmul(entityVectors_e2_neg)), 0));
+				}
+				
+				// Add contribution of V / W2
+				//TODO TRANSPOSE: INDArray vOfThisRelation_T= v.get(r).transpose();
+				INDArray vOfThisRelation_T= new Util().transpose(v.get(r));
+				INDArray vstack = Nd4j.vstack(entityVectors_e1, entityVectors_e2);	
+				
+				// Add contribution of bias b
+				//TODO TRANSPOSE: INDArray bOfThisRelation_T = b.get(r).transpose();
+				INDArray bOfThisRelation_T = new Util().transpose(b.get(r));
+				preactivation_pos = preactivation_pos.add(vOfThisRelation_T.mmul(vstack).addColumnVector(bOfThisRelation_T));
+				preactivation_neg = preactivation_neg.add(vOfThisRelation_T.mmul(Nd4j.vstack(entityVectors_e1_neg, entityVectors_e2_neg)).addColumnVector(bOfThisRelation_T));
+				
+				// Apply the activation function
+				INDArray z_activation_pos = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform(activationFunc, preactivation_pos));
+				INDArray z_activation_neg = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform(activationFunc, preactivation_neg));	
+				//System.out.println("activation: " + z_activation_pos);
+				
+				// Calculate scores for positive and negative examples
+				//TODO TRANSPOSE: INDArray score_pos = u.get(r).transpose().mmul(z_activation_pos);
+				//TODO TRANSPOSE: INDArray score_neg = u.get(r).transpose().mmul(z_activation_neg);
+				INDArray score_pos = new Util().transpose(u.get(r)).mmul(z_activation_pos);
+				INDArray score_neg = new Util().transpose(u.get(r)).mmul(z_activation_neg);			
+		
+				//Filter for training examples, (that already predicted correct and dont need to be in account for further optimization of the paramters)			
+				// https://groups.google.com/forum/?hl=en#!topic/recursive-deep-learning/chDXI1S2RHU
+				INDArray indx = Nd4j.ones(score_pos.columns(),1); // indx: currently all entries are used for further optimization [1111111]
+				for (int i = 0; i < score_pos.columns(); i++) {
+					//System.out.println("score pos: " + score_pos.getRow(0).getFloat(i)+1 +" > "+score_neg.getRow(0).getFloat(i));
+					// Compare of the correct Tripple (e1,e2) is scored higher +1 than the corresponding corrupt Tripple (e1,e3)
+					if (score_pos.getRow(0).getFloat(i)+1 > score_neg.getRow(0).getFloat(i)) {
+						indx.put(i,0, 1.0);
+					}else{
+						indx.put(i,0, 0.0);
+					}
+				}
+				//System.out.println("filter: "+indx);
+				
+				//Add max-margin term to the cost
+				cost = cost + Nd4j.sum(indx.mul(score_pos.sub(score_neg).add(1))).getFloat(0);
+			}
+			
+			cost = cost / batchSize;
+			
+			// Get stacked gradient vector and parameter vector
+			INDArray theta = parametersToStack(w,v,b,u,wordvectors);
+			
+			//Add regularization term to the cost and gradient	
+			cost = cost + (0.5F * (lamda * Nd4j.sum(theta.mul(theta)).getFloat(0)));
+			System.out.println("Cost: "+cost+"| Amount of Tripples updated: "+update+"| start: "+started+" |end: "+new Date().toString());
+			return cost;
+		}
+	}
+
+	@Override
+	public double[] derivativeAt(double[] theta) {
+		IPair result = computeAt(theta);
+		theta_CostIP = BasicPair.make( theta, result.getFirst() );
+		return (double[]) result.getSecond();
 	}
 }

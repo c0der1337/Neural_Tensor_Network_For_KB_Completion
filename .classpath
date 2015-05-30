@@ -17,5 +17,6 @@
 	<classpathentry kind="lib" path="nd4j-api-0.0.3.5.5.3-SNAPSHOT.jar"/>
 	<classpathentry kind="lib" path="nd4j-instrumentation-0.0.3.5.5.3-SNAPSHOT.jar"/>
 	<classpathentry kind="lib" path="nd4j-jblas-0.0.3.5.5.3-SNAPSHOT.jar"/>
+	<classpathentry kind="lib" path="stanford-corenlp-3.4.1.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
