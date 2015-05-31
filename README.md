@@ -13,6 +13,7 @@ A Neural Tensor Network for Knowledge Base Completion as described in the paper 
 - Before running the code:
  - Run Configurations / Arguments / add "-Xmx2G" in the box at the bottom
  - Edit path to training data
+ - Download the jar files for the build path: https://files.gitter.im/c0der1337/CIxq/build_path_libs.zip
 
 
 Additional information / resources:
