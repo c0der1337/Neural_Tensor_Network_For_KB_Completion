@@ -75,6 +75,7 @@ public class NTN implements IDifferentiableFn, DiffFunction {
 			b.put(i, Nd4j.zeros(1,sliceSize));
 			u.put(i, Nd4j.ones(sliceSize,1));				
 		}
+		
 		// Initialize WordVectors via loaded Vectors
 		 wordvectors = tbj.getWordVectorMaxtrixLoaded();
 		// For random wordVector initialization:
@@ -474,7 +475,7 @@ public class NTN implements IDifferentiableFn, DiffFunction {
 		}
 		//load word vectors:
 		for (int i = 0; i < wordvectors_size; i++) {
-			
+			wordvectors.put(i, theta.getScalar(readposition++));
 		}
 	}
 
@@ -482,9 +483,16 @@ public class NTN implements IDifferentiableFn, DiffFunction {
 		//load paramter w,v,b,u, (wordvectors, not implemented now)
 		stackToParameters(_theta);
 		
+		//original:
+		INDArray entity_vectorsOrg= this.getDatafactory().createVectorsForEachEntityByWordVectors();
+		
 		// create entity vectors from word vectors
-		INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors();
+		INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors(wordvectors);
 		//arrayInfo(entity_vectors, "entity_vectors");
+		
+		//compare vectors
+		System.out.println("are original we equal? " +entity_vectorsOrg.equals(entity_vectors));
+		System.out.println("are original we 1000 equal? " +entity_vectorsOrg.getColumn(1000).equals(entity_vectors.getColumn(1000)));
 		
 		INDArray dev_scores = Nd4j.zeros(_devTrippels.size());
 		INDArray entityVector1 = Nd4j.zeros(embeddingSize);
@@ -567,7 +575,7 @@ public class NTN implements IDifferentiableFn, DiffFunction {
 		stackToParameters(_theta);
 		
 		// create entity vectors from word vectors
-		 INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors();
+		 INDArray entity_vectors= this.getDatafactory().createVectorsForEachEntityByWordVectors(wordvectors);
 		
 		// initialize array to store the predictions of in- and correct tripples of the test data
 		INDArray predictions = Nd4j.zeros(_testTripples.size());

@@ -62,7 +62,7 @@ public class Run_NTN {
 		boolean minimizer = true;			// UMAS Minimizer = true, Stanford NLP Core QN Minimizer = false
 
 		
-		//System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
+		System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
 		
 		//support utilities
 		Util u = new Util();	
@@ -80,11 +80,11 @@ public class Run_NTN {
 		t.connectDatafactory(tbj);
 		
 		//Load initialized parameters via file or via random
-		//double[] theta = t.getTheta_inital().data().asDouble();
-		double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
+		double[] theta = t.getTheta_inital().data().asDouble();
+		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
 
 		//Train	
-
+		
 		for (int i = 0; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
 			tbj.generateNewTrainingBatchJob();
@@ -105,7 +105,10 @@ public class Run_NTN {
 			System.out.println("Paramters for batchjob optimized, iteration: "+i+" completed");	
 
 			//Storing paramters to start from this iteration again:
-			Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");		
+			if (i==5 || i%10==0) {
+				Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");	
+			}
+				
 		}		
 		// save optimized theta paramters
 		Nd4j.writeTxt(u.convertDoubleArrayToFlattenedINDArray(theta) , theta_save_path+"//theta_opt"+Calendar.getInstance().get(Calendar.DATE)+".txt", ",");
