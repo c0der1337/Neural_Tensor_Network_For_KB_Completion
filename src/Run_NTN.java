@@ -45,8 +45,8 @@ public class Run_NTN {
 			theta_load_path = args[1];
 			theta_save_path = args[2];
 		} catch (Exception e) {
-			data_path = "C://Users//Patrick//Documents//master arbeit//original_code//data//Wordnet//";
-			theta_save_path = "C://Users//Patrick//Documents//master arbeit//";
+			data_path = "data//Wordnet//";
+			theta_save_path = "C://Users////Documents//";
 		}
 
 		//Paramters
