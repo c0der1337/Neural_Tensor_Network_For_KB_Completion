@@ -45,12 +45,12 @@ public class Run_NTN {
 			theta_load_path = args[1];
 			theta_save_path = args[2];
 		} catch (Exception e) {
-			data_path = "data//Wordnet//";
-			theta_save_path = "C://Users////Documents//";
+			data_path = "C://data//Wordnet//";
+			theta_save_path = "C://";
 		}
 
 		//Paramters
-		int batchSize = 20000; 				// training batch size, org: 20000
+		int batchSize = 200; 				// training batch size, org: 20000
 		int numWVdimensions = 100; 			// size of the dimension of a word vector org: 100
 		int numIterations = 500; 			// number of optimization iterations, every iteration with a new training batch job, org: 500
 		int batch_iterations = 5;			// number of optimazation iterations for each batchs, org: 5

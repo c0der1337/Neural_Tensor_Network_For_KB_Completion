@@ -308,6 +308,7 @@ public class DataFactory{
 	}
 	
 	public INDArray createVectorsForEachEntityByWordVectors(){
+		//Method doesnt used the new in readed word vectors
 		INDArray entity_vectors = Nd4j.zeros(embeddings_size,numOfentities);
 		for (int i = 0; i < entitiesNumWord.size(); i++) {
 			String entity_name; //clear name without _  __name_ -> name
@@ -317,22 +318,26 @@ public class DataFactory{
 				entity_name =entitiesNumWord.get(i).substring(2);			
 			}
 			//System.out.println("entity: "+entitiesNumWord.get(i)+" | word: "+entity_name);			
-			
+
 			if (entity_name.contains("_")) { //whitespaces are _
 				//Entity conains of more than one word
 				INDArray entityvector = Nd4j.zeros(embeddings_size, 1);
-				for (int j = 0; j <entitiesNumWord.get(i).split("_").length; j++) {
+				int counterOfWordVecs = 0;
+
+				for (int j = 0; j < entity_name.split("_").length; j++) {
 					try {
 						entityvector = entityvector.add(worvectorWordVec.get(entity_name.split("_")[j]));
 					} catch (Exception e) {
 						//if no word vector available, use "unknown" word vector
 						entityvector = entityvector.add(worvectorWordVec.get("unknown"));
-					}			
+					}
+					counterOfWordVecs++;
 				}
-				entityvector = entityvector.div(entity_name.split("_").length);
+				
+				entityvector = entityvector.div(counterOfWordVecs);
 				entity_vectors.putColumn(i, entityvector);
 			}else{
-				// Entity conains of only one word
+				
 				try {
 					entity_vectors.putColumn(i, worvectorWordVec.get(entity_name));
 				} catch (Exception e) {
@@ -358,15 +363,17 @@ public class DataFactory{
 			if (entity_name.contains("_")) { //whitespaces are _
 				//Entity conains of more than one word
 				INDArray entityvector = Nd4j.zeros(embeddings_size, 1);
-				for (int j = 0; j <entitiesNumWord.get(i).split("_").length; j++) {
+				int counterOfWordVecs = 0;
+				for (int j = 0; j <entity_name.split("_").length; j++) {
 					try {
 						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get(entity_name.split("_")[j])));
 					} catch (Exception e) {
 						//if no word vector available, use "unknown" word vector
 						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
-					}			
+					}
+					counterOfWordVecs++;
 				}
-				entityvector = entityvector.div(entity_name.split("_").length);
+				entityvector = entityvector.div(counterOfWordVecs);
 				entity_vectors.putColumn(i, entityvector);
 			}else{
 				// Entity conains of only one word

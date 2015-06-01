@@ -362,15 +362,15 @@ public class NTN implements IDifferentiableFn, DiffFunction {
 		for (int i = 0; i < numberOfEntities; i++) {
 			int numOfWordsInEntity = tbj.entityLength(i);
 			int[] wordindexes = tbj.getWordIndexes(i);
-			//System.out.println("entity: "+i+" | NumOfWordInEntity: "+numOfWordsInEntity + " | wordindexes: "+wordindexes.length);
-			INDArray entity_vector_grad_column = entity_vectors_grad.getColumn(i);
-			// Normalize by number of words
-			entity_vector_grad_column.divi(numOfWordsInEntity);
-			// Add entity vector gradient into word_vector_grad.
-			for (int j = 0; j < wordindexes.length; j++) {
-				//System.out.println("put ev grad in column"+wordindexes[j]+" wv grad");
-				INDArray wvgrad_Column = word_vector_grad.getColumn(wordindexes[j]);
-				word_vector_grad.put(wordindexes[j], wvgrad_Column.linearView().add(entity_vector_grad_column.linearView()));
+			if (Nd4j.sum(entity_vectors_grad.getColumn(i)).getFloat(0) != 0) {
+				INDArray entity_vector_grad_column = entity_vectors_grad.getColumn(i);
+				// Normalize by number of words
+				entity_vector_grad_column.divi(numOfWordsInEntity);
+				// Add entity vector gradient into word_vector_grad.
+				for (int j = 0; j < wordindexes.length; j++) {
+					INDArray wvgrad_Column = word_vector_grad.getColumn(wordindexes[j]);
+					word_vector_grad.putColumn(wordindexes[j], word_vector_grad.getColumn(wordindexes[j]).add(entity_vector_grad_column));
+				}
 			}
 		}
 		
