@@ -26,6 +26,10 @@ public class DataFactory{
 		 
 	private HashMap<Integer, String> entitiesNumWord = new HashMap<Integer, String>();
 	private HashMap<String, Integer> entitiesWordNum = new HashMap<String, Integer>();
+	
+	private HashMap<Integer, String> entitiesNumtranslateWord = new HashMap<Integer, String>();
+	private HashMap<String, String> entitiesWordtranslateWord = new HashMap<String, String>();
+	
 	private HashMap<Integer, String> relationsNumWord = new HashMap<Integer, String>();
 	private HashMap<String, Integer> relationsWordNum = new HashMap<String, Integer>();
 	
@@ -38,7 +42,15 @@ public class DataFactory{
 	private static HashMap<String, INDArray> worvectorWordVec = new HashMap<String, INDArray>(); // return word vector for a given word as string
 	private static HashMap<Integer, INDArray> worvectorNumVec = new HashMap<Integer, INDArray>(); // return word vector for a given word index
 	private INDArray wordVectorMaxtrixLoaded; //matrix contains the original loaded word vectors, size: Word_embedding * numOfWords, every column contains a word vector
+	
 	private ArrayList<String> vocab = new ArrayList<String>(); //List with words of entities for only loading word vectors, that need for entity vector creation
+	private ArrayList<String> vocabDE = new ArrayList<String>(); //List with words of entities for only loading word vectors, that need for entity vector creation
+	
+	private HashMap<Integer, String> vocabNumWordDE = new HashMap<Integer, String>(); //contains vocab of word vectors and index of a word
+	private HashMap<String, Integer> vocabWordNumDE = new HashMap<String, Integer>();
+	private static HashMap<String, INDArray> worvectorWordVecDE = new HashMap<String, INDArray>();
+	private static HashMap<Integer, INDArray> worvectorNumVecDE = new HashMap<Integer, INDArray>();
+	
 	
 	private int numOfentities;
 	private int numOfRelations;
@@ -46,24 +58,29 @@ public class DataFactory{
 	private int batch_size;
 	private int corrupt_size;
 	private int embeddings_size;
+	private boolean reduced_RelationSize;
+	private int reduceRelationToSize=2;
+	private boolean german;
 	
 
 	// a random collection inclusive corrupt examples is created by evoking generateNewTrainingBatchJob()
 	private ArrayList<Tripple> batchjob = new ArrayList<Tripple>();  // contains the data of a batch training job to optimize paramters
 
 	// Singelton
-	public static DataFactory getInstance (int _batch_size, int _corrupt_size, int _embedding_size) {
+	public static DataFactory getInstance (int _batch_size, int _corrupt_size, int _embedding_size, boolean _reduce_RelationSize, boolean _german) {
 		if (DataFactory.instance == null) {
-			DataFactory.instance = new DataFactory (_batch_size, _corrupt_size, _embedding_size);
+			DataFactory.instance = new DataFactory (_batch_size, _corrupt_size, _embedding_size, _reduce_RelationSize, _german);
 		    }
 		    return DataFactory.instance;
 	
 	}
 	
-	private DataFactory(int _batch_size, int _corrupt_size,int _embedding_size){
+	private DataFactory(int _batch_size, int _corrupt_size,int _embedding_size, boolean _reduce_RelationSize, boolean _german){
 		batch_size = _batch_size;
 		corrupt_size = _corrupt_size;
 		embeddings_size = _embedding_size;
+		reduced_RelationSize = _reduce_RelationSize;
+		german = _german;
 	}
 	public int getNumOfentities() {
 		return numOfentities;
@@ -98,8 +115,11 @@ public class DataFactory{
 
 	public void generateNewTrainingBatchJob(){
 		batchjob.clear();
-		Collections.shuffle(trainingTripples);
+		//TODO wieder zulassen: Collections.shuffle(trainingTripples);
 		Random rand = new Random();
+		// int[] e3 = {9167, 2100, 30636, 13136, 22825, 24943};
+		// int[] e3 = {9167, 2100, 30636, 13136, 22825, 24943,1500};
+		// int e3counter=0;
 		for (int h = 0; h < corrupt_size; h++) {
 			for (int i = 0; i < batch_size; i++) {
 				//Set e3 as random corrupt tripple			
@@ -107,6 +127,8 @@ public class DataFactory{
 				// int randomNum = rand.nextInt((max - min) + 1) + min;
 				int random_corrupt_entity = rand.nextInt(((numOfentities-1) - 0) + 1) + 0;
 				batchjob.add(new Tripple(trainingTripples.get(i), random_corrupt_entity));
+				// batchjob.add(new Tripple(trainingTripples.get(i), e3[e3counter]));
+				// e3counter++;
 				
 			}//System.out.println("e1: "+trainingTripples.get(i).getEntity1()+" | e3:"+trainingTripples.get(i).getIndex_entity3_corrupt());
 		}
@@ -170,15 +192,27 @@ public class DataFactory{
 	    BufferedReader br = new BufferedReader(fr);
 	    String line = br.readLine();
 	    int relations_counter = 0;
-	    while (line != null) {
-	    	relationsNumWord.put(relations_counter,line);
-	    	relationsWordNum.put(line,relations_counter);
-	    	line = br.readLine();
-	    	relations_counter++;
-		}   
+  
+
+	    if (reduced_RelationSize==false) {
+		    while (line!=null) {
+		    	relationsNumWord.put(relations_counter,line);
+		    	relationsWordNum.put(line,relations_counter);
+		    	line = br.readLine();
+		    	relations_counter++;
+			} 
+			numOfRelations = relations_counter;
+		}else{
+		    while (relations_counter<reduceRelationToSize) {
+		    	relationsNumWord.put(relations_counter,line);
+		    	relationsWordNum.put(line,relations_counter);
+		    	line = br.readLine();
+		    	relations_counter++;
+			} 
+	    	numOfRelations = relations_counter;
+		}
 	    br.close();
-	    numOfRelations = relations_counter;
-	    System.out.println(numOfRelations+ " Relations loaded");
+	    System.out.println(numOfRelations+ " Relations loaded reduced relation size is: "+reduced_RelationSize);
 
 	}
 	
@@ -189,13 +223,28 @@ public class DataFactory{
 	    int trainings_tripple_counter = 0;
 	    while (line != null) {
 	    	//System.out.println(trainings_tripple_counter+ " line: "+line.split("\\s")[0]+"|"+line.split("\\s")[1]+"|"+line.split("\\s")[2]);
-	    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
-	    	int rel = relationsWordNum.get(line.split("\\s")[1]);
-	    	int e2 = entitiesWordNum.get(line.split("\\s")[2]);
-	    	trainingDataNumTripple.put(trainings_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
-	    	trainingTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
-	    	line = br.readLine();
-	    	trainings_tripple_counter++;
+	    	if (reduced_RelationSize==false) {
+		    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+		    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+		    	int e2 = entitiesWordNum.get(line.split("\\s")[2]);
+		    	trainingDataNumTripple.put(trainings_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
+		    	trainingTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
+		    	line = br.readLine();
+		    	trainings_tripple_counter++;
+	    	}else{	
+	    		if (line.split("\\s")[1].equals(relationsNumWord.get(0))|line.split("\\s")[1].equals(relationsNumWord.get(1))) {
+	    			int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+			    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+			    	int e2 = entitiesWordNum.get(line.split("\\s")[2]);
+			    	trainingDataNumTripple.put(trainings_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
+			    	trainingTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2] ));
+			    	line = br.readLine();
+			    	trainings_tripple_counter++;
+				}else{
+					line = br.readLine();
+				}
+					
+	    	}
 		}   
 	    br.close();
 	    System.out.println(trainings_tripple_counter+" Training Examples loaded...");
@@ -209,14 +258,29 @@ public class DataFactory{
 	    int dev_tripple_counter = 0;
 	    while (line != null) {
 	    	//System.out.println("line: "+line.split("\\s")[0]+"|"+line.split("\\s")[1]+"|"+line.split("\\s")[2]+"|"+line.split("\\s")[3]+"|");
-	    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
-	    	int rel = relationsWordNum.get(line.split("\\s")[1]);
-	    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
-	    	int label = Integer.parseInt(line.split("\\s")[3]);
-	    	devDataNumTripple.put(dev_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
-	    	devTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
-	    	line = br.readLine();
-	    	dev_tripple_counter++;
+	    	if (reduced_RelationSize==false) {
+		    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+		    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+		    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
+		    	int label = Integer.parseInt(line.split("\\s")[3]);
+		    	devDataNumTripple.put(dev_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+		    	devTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+		    	line = br.readLine();
+		    	dev_tripple_counter++;
+	    	}else{
+	    		if (line.split("\\s")[1].equals(relationsNumWord.get(0))) {
+	    			int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+			    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+			    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
+			    	int label = Integer.parseInt(line.split("\\s")[3]);
+			    	devDataNumTripple.put(dev_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+			    	devTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+			    	line = br.readLine();
+			    	dev_tripple_counter++;
+				}else{
+					line = br.readLine();
+				}
+	    	}
 		}   
 	    br.close();
 	    System.out.println(dev_tripple_counter +" Dev Examples loaded...");
@@ -229,15 +293,31 @@ public class DataFactory{
 	    String line = br.readLine();
 	    int test_tripple_counter = 0;
 	    while (line != null) {
-	    	//System.out.println("line: "+line.split("\\s")[0]+"|"+line.split("\\s")[1]+"|"+line.split("\\s")[2]+"|"+line.split("\\s")[3]+"|");
-	    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
-	    	int rel = relationsWordNum.get(line.split("\\s")[1]);
-	    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
-	    	int label = Integer.parseInt(line.split("\\s")[3]);
-	    	testDataNumTripple.put(test_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
-	    	testTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
-	    	line = br.readLine();
-	    	test_tripple_counter++;
+	    	if (reduced_RelationSize==false) {
+		    	//System.out.println("line: "+line.split("\\s")[0]+"|"+line.split("\\s")[1]+"|"+line.split("\\s")[2]+"|"+line.split("\\s")[3]+"|");
+		    	int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+		    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+		    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
+		    	int label = Integer.parseInt(line.split("\\s")[3]);
+		    	testDataNumTripple.put(test_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+		    	testTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+		    	line = br.readLine();
+		    	test_tripple_counter++;
+	    	}else{
+	    		if (line.split("\\s")[1].equals(relationsNumWord.get(0))) {
+	    			int e1 = entitiesWordNum.get(line.split("\\s")[0]);
+			    	int rel = relationsWordNum.get(line.split("\\s")[1]);
+			    	int e2 = entitiesWordNum.get(line.split("\\s")[2]); 
+			    	int label = Integer.parseInt(line.split("\\s")[3]);
+			    	testDataNumTripple.put(test_tripple_counter,new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+			    	testTripples.add(new Tripple(e1, line.split("\\s")[0], rel, line.split("\\s")[1], e2, line.split("\\s")[2],label ));
+			    	line = br.readLine();
+			    	test_tripple_counter++;
+	    		}else{
+					line = br.readLine();
+				}
+	    	}
+	    		
 		}   
 	    br.close();
 	    System.out.println(test_tripple_counter +" Test Examples loaded...");
@@ -253,6 +333,7 @@ public class DataFactory{
 			//word embeddings
 			MLArray wordvectors_mat = (MLArray) matfilereader.getMLArray("We");
 			MLDouble mlArrayDouble = (MLDouble) wordvectors_mat;
+			System.out.println("mlArrayDouble"+mlArrayDouble.getM()+"|"+mlArrayDouble.getN()+"|"+mlArrayDouble.getNDimensions()+"|"+mlArrayDouble.getSize());
 			//INDArray wordvectormatrix = Nd4j.zeros(100,1); //100 dimension of word embeddings
 			String word;
 			int wvCounter=0;
@@ -277,14 +358,16 @@ public class DataFactory{
 					}
 					
 				}else{
+
 					vocabNumWord.put(wvCounter, word);
 					vocabWordNum.put(word, wvCounter);
-					INDArray wordvector = Nd4j.zeros(100,1);
+					INDArray wordvector = Nd4j.ones(100,1);
 					for (int j = 0; j < 100; j++) {
 						wordvector.put(j, 0, mlArrayDouble.get(i, j));	
 					}
 					worvectorNumVec.put(wvCounter, wordvector);
 					worvectorWordVec.put(word, wordvector);	
+					//System.out.println(word+": "+wordvector);
 					wvCounter++;
 				}
 								
@@ -302,9 +385,9 @@ public class DataFactory{
 			//System.out.println("worvectorNumVec.get(i): "+worvectorNumVec.get(i));
 			wordVectorMaxtrixLoaded.putColumn(i, worvectorNumVec.get(i));
 		}
-		
-		//wordVectorMaxtrixLoaded reduce values
-		System.out.println("word vector matrix ready..."+wordVectorMaxtrixLoaded);
+		//System.out.println("wordVectorMaxtrixLoaded col 1: "+wordVectorMaxtrixLoaded.getColumn(1));
+		//System.out.println("word vector matrix ready..."+wordVectorMaxtrixLoaded);
+
 	}
 	
 	public INDArray createVectorsForEachEntityByWordVectors(){
@@ -337,6 +420,10 @@ public class DataFactory{
 				entityvector = entityvector.div(counterOfWordVecs);
 				entity_vectors.putColumn(i, entityvector);
 			}else{
+				// Entity contains of only one word
+				/*if (entity_name.equals("absorption") | entity_name.equals("centering")) {
+					System.out.println("entity_name: "+entity_name +"wv: "+worvectorWordVec.get(entity_name));
+				}*/
 				
 				try {
 					entity_vectors.putColumn(i, worvectorWordVec.get(entity_name));
@@ -349,16 +436,97 @@ public class DataFactory{
 		return entity_vectors;
 	}
 	
-	public INDArray createVectorsForEachEntityByWordVectors(INDArray updatedWVMatrix){
-		INDArray entity_vectors = Nd4j.zeros(embeddings_size,numOfentities);
-		for (int i = 0; i < entitiesNumWord.size(); i++) {
-			String entity_name; //clear name without _  __name_ -> name
-			try {
-				entity_name = entitiesNumWord.get(i).substring(2, entitiesNumWord.get(i).lastIndexOf("_"));
-			} catch (Exception e) {
-				entity_name =entitiesNumWord.get(i).substring(2);			
+	public void loadGermanDewack100Vectors(String datapath) throws IOException{
+		/*Load translation list
+		__city_1|stadt
+		__jurisprudence_2|gesetz*/
+		
+		FileReader fr = new FileReader(datapath+"translated_entities.txt");
+	    BufferedReader br = new BufferedReader(fr);
+	    String line = br.readLine();
+	    int entity_counter = 0;
+	    while (line != null) {
+	    	//System.out.println(line.split("\\|")[0]+"-"+line.split("\\|")[1]);
+		    entitiesWordtranslateWord.put(line.split("\\|")[0], line.split("\\|")[1]);
+		    entitiesNumtranslateWord.put(entity_counter, line.split("\\|")[1]);
+		    
+		    // Generating a vocabulary for german words based on entities
+		    for (int i = 0; i < line.split("\\_").length; i++) {
+		    	 if (!vocabDE.contains(line.split("\\_")[i])) {
+		    		 vocabDE.add(line.split("\\_")[i]);
+				}
 			}
-			//System.out.println("entity: "+entitiesNumWord.get(i)+" | word: "+entity_name);			
+	    	line = br.readLine();
+	    	entity_counter++;
+		}   
+	    br.close();
+	    vocabDE.add("unbekannt");
+	    
+	    System.out.println(entity_counter + "Entity translation loaded with a vocab size of: "+vocabDE.size());
+	    
+		//Load german word vectors
+		fr = new FileReader(datapath+"dewac_vectors100.bin");
+		br = new BufferedReader(fr);
+		//1st line: get information about vectors
+		line = br.readLine();
+	    //System.out.println(line.split("\\s")[0]+" german word vectors available with dimension size: " + line.split("\\s")[1]);
+	    line = br.readLine();
+	    //System.out.println(""+line);
+	    int wvCounterDe = 0;
+	    String word;
+	    while (line != null) {
+	    	word = line.split("\\s")[0];
+	    	if (wvCounterDe<100) {
+				//System.out.println("word: "+word);
+			}
+	    	if (vocabDE.contains(word)) {
+				//load wordvector
+	    		vocabNumWordDE.put(wvCounterDe, word);
+				vocabWordNumDE.put(word, wvCounterDe);
+	    		INDArray wv = Nd4j.create(100,1);
+	    		for (int i = 1; i < embeddings_size+1; i++) {
+	    			wv.putScalar(i-1, Double.parseDouble(line.split("\\s")[i]));
+				}
+	    		worvectorWordVecDE.put(word, wv);
+	    		worvectorNumVecDE.put(wvCounterDe,wv);
+	    		wvCounterDe++;
+	    	}
+	    	line = br.readLine();
+		}
+	    br.close();
+	    
+	    numOfWords = worvectorNumVecDE.size();
+		System.out.println(worvectorNumVecDE.size() +" geman Word Vectors loaded... Counter: "+wvCounterDe);
+		
+		//quick and ... fix
+		vocabNumWord = vocabNumWordDE;
+		vocabWordNum = vocabWordNumDE;
+		
+    	//create a word vector matrix
+		wordVectorMaxtrixLoaded = Nd4j.zeros(100, numOfWords);
+		for (int i = 0; i < numOfWords; i++) {
+			//same as for english word vectors, because it is used in the cost function to calculate the entity vectors
+			wordVectorMaxtrixLoaded.putColumn(i, worvectorNumVecDE.get(i));
+			//wordVectorMaxtrixLoaded reduce values
+		}   
+		System.out.println("word vector matrix with german words is ready..."+wordVectorMaxtrixLoaded);
+	}
+	
+	public INDArray createEntityVectorsByWordEmbeddings(INDArray updatedWVMatrix){
+		INDArray entity_vectors = Nd4j.zeros(embeddings_size,numOfentities);
+		int wv_not_found_counter =0;
+		for (int i = 0; i < numOfentities; i++) {
+			String entity_name=null; //clear name without _  __name_ -> name
+			if(german ==false){
+				try {
+					entity_name = entitiesNumWord.get(i).substring(2, entitiesNumWord.get(i).lastIndexOf("_"));
+				} catch (Exception e) {
+					entity_name =entitiesNumWord.get(i).substring(2);			
+				}
+				//System.out.println("entity: "+entitiesNumWord.get(i)+" | word: "+entity_name);
+			}else{
+				entity_name = entitiesNumtranslateWord.get(i);
+			}
 			
 			if (entity_name.contains("_")) { //whitespaces are _
 				//Entity conains of more than one word
@@ -366,27 +534,52 @@ public class DataFactory{
 				int counterOfWordVecs = 0;
 				for (int j = 0; j <entity_name.split("_").length; j++) {
 					try {
+						//System.out.println("Entity "+i+": WV column: "+vocabWordNum.get(entity_name.split("_")[j]));
+						//System.out.println("WV: "+updatedWVMatrix.getColumn(vocabWordNum.get(entity_name.split("_")[j])));
 						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get(entity_name.split("_")[j])));
 					} catch (Exception e) {
 						//if no word vector available, use "unknown" word vector
-						entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
+						wv_not_found_counter++;
+						if(german ==false){
+							//System.out.println("entity_name.split()[j]): "+entity_name.split("_")[j]);
+							entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
+							/*System.out.println("19503: "+vocabNumWord.get(19503));
+							System.out.println("31157: "+vocabNumWord.get(31157));
+							System.out.println("Entity "+i+": WV column: UNKNOWN"+vocabWordNum.get("unknown"));
+							System.out.println("WV: "+updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));*/
+						}else{
+							entityvector = entityvector.add(updatedWVMatrix.getColumn(vocabWordNum.get("unbekannt")));
+						}
 					}
 					counterOfWordVecs++;
 				}
 				entityvector = entityvector.div(counterOfWordVecs);
 				entity_vectors.putColumn(i, entityvector);
 			}else{
-				// Entity conains of only one word
+				// Entity contains of only one word
 				try {
 					entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get(entity_name)));
+					//System.out.println("Entity "+i+": WV column: "+vocabWordNum.get(entity_name));
+					//System.out.println("WV: "+updatedWVMatrix.getColumn(vocabWordNum.get(entity_name)));
 				} catch (Exception e) {
 					// if no word vector available, use "unknown" word vector
-					entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
+					wv_not_found_counter++;
+					//System.out.println("entity_name: "+entity_name);
+					if(german ==false){
+						entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));
+						/*System.out.println("19503: "+vocabNumWord.get(19503));
+						System.out.println("Entity "+i+": WV column: UNKNOWN"+vocabWordNum.get("unknown"));
+						System.out.println("WV: "+updatedWVMatrix.getColumn(vocabWordNum.get("unknown")));*/
+					}else{
+						entity_vectors.putColumn(i, updatedWVMatrix.getColumn(vocabWordNum.get("unbekannt")));
+					}
 				}			
 			}		
 		}
+		System.out.println("Entity Vectors created. For "+wv_not_found_counter+" words were no Word Embedding found, instead used Word -unknown- ");
 		return entity_vectors;
 	}
+	
 	public int entityLength(int entityIndexNum){
 		//of how much words contains this entity
 		// return: 1 means 1 word | -3 because of other _		
@@ -489,5 +682,7 @@ public class DataFactory{
 		//System.out.println("wordIndexes: "+ wordIndexes.length + " | "+wordIndexes[0]);		
 		return wordIndexes;
 	}
+	
+	
 
 }

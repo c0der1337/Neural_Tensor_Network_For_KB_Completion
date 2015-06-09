@@ -13,7 +13,7 @@ public class Util {
 	/**
 	 * Get slices of a tensor because of nd4j issue #84
 	 */
-	public INDArray getSliceOfaTensor(INDArray tensor, int numOfSlice){
+	public INDArray _getSliceOfaTensor(INDArray tensor, int numOfSlice){
 		//create the slice array	
 		INDArray slice = Nd4j.zeros(tensor.slices(), tensor.slice(0).rows());
 		//check for maximum possible slices
@@ -91,24 +91,13 @@ public class Util {
 				double z = currX  * currVal;
 				z = z + resultArr.getDouble(rowsOfX,column);
 				resultArr.put(rowsOfX,column, z);
-				//System.out.println(resultArr);
+				//System.out.println("Sparse values: row:" + rowsOfX+"column: "+column);
 			}
 		}
 		return resultArr;
 	}
-	
-	public INDArray transpose(INDArray x){
-		// Method was necessary because mmul with a tranposed matrix occured in a false result because of an issue in the transpose method, see ND4j issue 109 for instance
-		INDArray tranposed = Nd4j.create(x.columns(),x.rows());
-		
-		for (int i = 0; i < x.columns(); i++) {
-			tranposed.putRow(i, x.transpose().getRow(i));
-		}
-		return tranposed;
-	}
 
-	public void TESTmultCSRMAtrixWithVector2(INDArray x, INDArray values, INDArray entitylist, INDArray rows, int rowSize, int columns){
-		//only for test	
+	public void multCSRMAtrixWithVector2(INDArray x, INDArray values, INDArray entitylist, INDArray rows, int rowSize, int columns){
 		System.out.println("x: "+ x);
 		System.out.println("values: "+ values);
 		System.out.println("entitylist: "+ entitylist);
@@ -159,6 +148,18 @@ public class Util {
 				System.out.println("resultArr: "+resultArr);
 			}
 		}
+	}
+	
+	public INDArray transpose(INDArray x){
+		// Method was necessary because mmul with a tranposed matrix occured in a false result because of an issue in the transpose method, see ND4j issue 109 for instance
+		INDArray tranposed = Nd4j.create(x.columns(),x.rows());
+		
+		for (int i = 0; i < x.columns(); i++) {
+			tranposed.putRow(i, x.transpose().getRow(i));
+		}
+		
+		
+		return tranposed;
 	}
 	
 	

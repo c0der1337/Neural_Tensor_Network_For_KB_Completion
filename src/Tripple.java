@@ -115,7 +115,7 @@ public class Tripple {
 	public String toString() {
 		// TODO Auto-generated method stub
 		
-		return "Tripple: e1:"+entity1+"("+index_entity1+") "+relation+"("+index_relation+") "+"e2: "+entity2+"("+index_entity2+") ";
+		return "Tripple: e1:"+entity1+"("+index_entity1+") "+relation+"("+index_relation+") "+"e2: "+entity2+"("+index_entity2+") "+"e3: "+entity3_corrupt+"("+index_entity3_corrupt+")";
 	}
 
 }
