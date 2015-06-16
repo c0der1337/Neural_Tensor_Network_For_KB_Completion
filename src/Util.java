@@ -13,7 +13,7 @@ public class Util {
 	/**
 	 * Get slices of a tensor because of nd4j issue #84
 	 */
-	public INDArray getSliceOfaTensor(INDArray tensor, int numOfSlice){
+	public INDArray _getSliceOfaTensor(INDArray tensor, int numOfSlice){
 		//create the slice array	
 		INDArray slice = Nd4j.zeros(tensor.slices(), tensor.slice(0).rows());
 		//check for maximum possible slices
@@ -32,6 +32,17 @@ public class Util {
 			System.out.println("Your Tensor has only "+tensor.slice(0).columns()+"-1 slices to extract");
 		}		
 		return slice;	
+	}
+	
+	public INDArray putSliceOfaTensor(INDArray tensor, int numOfSlice, INDArray slice){
+		for (int c = 0; c < slice.rows(); c++) {
+			for (int r = 0; r < slice.columns(); r++) {
+				tensor.slice(c).put(r, numOfSlice, slice.getDouble(c,r));
+			}
+		}
+		//System.out.println("return tensor: "+tensor);
+		return tensor;
+
 	}
 
 	
@@ -80,10 +91,75 @@ public class Util {
 				double z = currX  * currVal;
 				z = z + resultArr.getDouble(rowsOfX,column);
 				resultArr.put(rowsOfX,column, z);
-				//System.out.println(resultArr);
+				//System.out.println("Sparse values: row:" + rowsOfX+"column: "+column);
 			}
 		}
 		return resultArr;
+	}
+
+	public void multCSRMAtrixWithVector2(INDArray x, INDArray values, INDArray entitylist, INDArray rows, int rowSize, int columns){
+		System.out.println("x: "+ x);
+		System.out.println("values: "+ values);
+		System.out.println("entitylist: "+ entitylist);
+		System.out.println("rows: "+rows);
+		System.out.println("Dense: " +getDenseMatrixWithSparseMatrixCRSData( values, entitylist, rows, rowSize, columns));
+		System.out.println("correct: "+x.mul(getDenseMatrixWithSparseMatrixCRSData( values, entitylist, rows, rowSize, columns)));
+		//System.out.println("correct: "+getDenseMatrixWithSparseMatrixCRSData( values, entitylist, rows, rowSize, columns).mul(x));
+		System.out.println("Multiplications starts for VectorX mul CSRData...");
+		INDArray resultArr = Nd4j.zeros(1,columns);
+		for (int row = 0; row < rows.length(); row++) {
+			System.out.println("resultArr: "+resultArr);
+			int column = entitylist.getInt(row);
+			double currX = x.getDouble(row);
+			double currVal = values.getDouble(row);
+			double z = currX  * currVal;
+			 z = z + resultArr.getDouble(column);
+			resultArr.putScalar(column, z);
+		}
+		System.out.println("OUTPUT resultArr: "+resultArr);
+		System.out.println("Multiplications ends...");
+		System.out.println("+++++++++++++++++++++++++++");
+		System.out.println("Multiplications starts for VectorX mul CSRData...");
+		x = Nd4j.rand(2,3);
+		System.out.println("x: "+ x);
+		INDArray resultArr2 = Nd4j.zeros(2,columns);
+		for (int rowsOfX = 0; rowsOfX < x.rows(); rowsOfX++) {
+			for (int row = 0; row < rows.length(); row++) {
+				System.out.println("resultArr: "+resultArr2);
+				int column = entitylist.getInt(row);
+				double currX = x.getDouble(rowsOfX,row);
+				double currVal = values.getDouble(row);
+				double z = currX  * currVal;
+				z = z + resultArr2.getDouble(rowsOfX,column);
+				resultArr2.put(rowsOfX,column, z);
+			}
+		}
+		System.out.println("OUTPUT resultArr2: "+resultArr2);
+		System.out.println("Multiplications ends...");
+		
+		for (int i = 0; i < x.length(); i++) {
+			for (int k = rows.getInt(i); k < rows.getInt(i+1); k++) {
+				double valueK = values.getDouble(k);
+				int columnK = entitylist.getInt(k);
+				System.out.println("valueK: "+valueK+"|entityListK: "+columnK);
+				//double entityListK = entitylist.getInt(k);
+				double res = valueK * x.getDouble(columnK);
+				resultArr.putScalar(i, res + resultArr.getDouble(i));
+				System.out.println("resultArr: "+resultArr);
+			}
+		}
+	}
+	
+	public INDArray transpose(INDArray x){
+		// Method was necessary because mmul with a tranposed matrix occured in a false result because of an issue in the transpose method, see ND4j issue 109 for instance
+		INDArray tranposed = Nd4j.create(x.columns(),x.rows());
+		
+		for (int i = 0; i < x.columns(); i++) {
+			tranposed.putRow(i, x.transpose().getRow(i));
+		}
+		
+		
+		return tranposed;
 	}
 	
 	

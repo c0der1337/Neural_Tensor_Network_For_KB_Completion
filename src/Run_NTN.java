@@ -24,7 +24,9 @@ import com.jmatio.types.MLCell;
 import com.jmatio.types.MLChar;
 import com.jmatio.types.MLDouble;
 import com.jmatio.types.MLNumericArray;
+import com.sun.xml.internal.bind.v2.model.core.ArrayInfo;
 
+import edu.stanford.nlp.optimization.QNMinimizer;
 import edu.umass.nlp.optimize.IDifferentiableFn;
 import edu.umass.nlp.optimize.IOptimizer;
 import edu.umass.nlp.optimize.LBFGSMinimizer;
@@ -34,28 +36,11 @@ import edu.umass.nlp.utils.IPair;
 public class Run_NTN {
 
 	public static void main(String[] args) throws IOException {
-		/*INDArray normalMatrix = Nd4j.create(new float[]{1,2,3,4,5,6},new int[]{2,3});
-		System.out.println("normalMatrix: "+normalMatrix);
-		INDArray entityList = Nd4j.zeros(3);
-		entityList.putScalar(0, 1);entityList.putScalar(1, 3);entityList.putScalar(2, 1);
-		System.out.println("entityList: "+entityList);
-		INDArray x = Nd4j.rand(1,3);
-		//new Util().multCSRMAtrixWithVector2(x, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
-		INDArray dense = new Util().getDenseMatrixWithSparseMatrixCRSData(Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4);
-		x = Nd4j.rand(2,3);
-		System.out.println("x: "+x);
-		System.out.println("dense: " +dense);
-		System.out.println("mul: "+ x.mul(dense));
-		System.out.println("mmul: "+x.mmul(dense));
-		int numOfWrongTest = 3;
-		System.out.println("csr: "+new Util().MatrixX_mmul_CSRMatrix(x, Nd4j.ones(numOfWrongTest), entityList, Nd4j.arange(0, numOfWrongTest+1), numOfWrongTest,4));
-		//System.out.println(new Util().multCSRMatrix(normalMatrix, Nd4j.ones(3), entityList, Nd4j.arange(0, 3), 3, 4));
-		*/
+		Nd4j.dtype = DataBuffer.Type.FLOAT;
+		//Nd4j.ENFORCE_NUMERICAL_STABILITY = true;
+		
 		Random rand = new Random();
-		
-		//Restrict data type to float to save memory
-		Nd4j.dtype = DataBuffer.FLOAT;
-		
+
 		//Data path
 		String data_path="";String theta_save_path=""; String theta_load_path="";
 		try {
@@ -77,53 +62,72 @@ public class Run_NTN {
 		String activation_function= "tanh"; // [x] tanh or [] sigmoid, org:tanh
 		float lamda = 0.0001F;				// regularization parameter, org: 0.0001
 		boolean optimizedLoad=false;		// only load word vectors that are neede for entity vectors (>50% less), org: false
+		boolean reducedNumOfRelations = false; // reduce the number of relations to the first or first and second
+		boolean minimizer = true;			// UMAS Minimizer = true, Stanford NLP Core QN Minimizer = false
+		boolean german = false;
 		
 		System.out.println("NTN: batchSize: "+batchSize+" | SliceSize: "+sliceSize+" | numIterations:"+numIterations+" | corrupt_size: "+corrupt_size+"| activation func: "+ activation_function);
 		
 		//support utilities
 		Util u = new Util();	
 		//Load data entities, relation, traingsdata, word vectors ...
-		DataFactory tbj = DataFactory.getInstance(batchSize, corrupt_size, numWVdimensions);
+		//DataFactory tbj = DataFactory.getInstance(batchSize, corrupt_size, numWVdimensions, german, reducedNumOfRelations);
+		DataFactory tbj = DataFactory.getInstance(batchSize, corrupt_size, numWVdimensions, reducedNumOfRelations);
 		tbj.loadEntitiesFromSocherFile(data_path +"entities.txt");
 		tbj.loadRelationsFromSocherFile(data_path + "relations.txt");	
 		tbj.loadTrainingDataTripplesE1rE2(data_path + "train.txt");
 		tbj.loadDevDataTripplesE1rE2Label(data_path + "dev.txt");
 		tbj.loadTestDataTripplesE1rE2Label(data_path + "test.txt");
 		tbj.loadWordVectorsFromMatFile(data_path + "initEmbed.mat",optimizedLoad);
+		tbj.loadWordIndicesFromFile(data_path+"wordindices.txt");
+		/*if (german) {
+			tbj.loadGermanDewack100Vectors(data_path);
+		}else{
+			tbj.loadWordVectorsFromMatFile(data_path + "initEmbed.mat",optimizedLoad);
+		}*/
 		
 		// Create the NTN and set the parameters for the NTN
 		NTN t = new NTN(numWVdimensions, tbj.getNumOfentities(), tbj.getNumOfRelations(), tbj.getNumOfWords(), batchSize, sliceSize, activation_function, tbj, lamda);
 		t.connectDatafactory(tbj);
 		
-		//Load initialized parameters
+		//Load initialized parameters via file or via random
 		double[] theta = t.getTheta_inital().data().asDouble();
-		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble();
+		//double[] theta = Nd4j.readTxt(theta_load_path, ",").data().asDouble()aliz;
+		//t.stackToParametersFromNumpy(Nd4j.readTxt("C://Users//Patrick//Documents//master arbeit//Neural-Tensor-Network-master//w_rand_int_SliceSize1.txt",","));
 
-		//Train
+		//Train	
+		
 		for (int i = 0; i < numIterations; i++) { 
 			//Create a training batch by picking up (random) samples from training data	
 			tbj.generateNewTrainingBatchJob();
 			
-			
-			LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();
-			//Set optimizer options: 5 iterations
-			optimizerOpts.maxIters=batch_iterations;
-			
-			//Optimize the network using the training batch
-			IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
-			//System.out.println("result: " + DoubleArrays.toString(res.minArg));
-			System.out.println("Paramters for batchjob optimized, current iteration: "+i);
-			
-			theta = res.minArg;
-			
+			if (minimizer == true) {
+				//Initilize optimizer and set optimizer options to 5 iterations
+				LBFGSMinimizer.Opts optimizerOpts = new LBFGSMinimizer.Opts();				
+				optimizerOpts.maxIters=batch_iterations;	
+				//Optimize the network using the training batch
+				IOptimizer.Result res = (new LBFGSMinimizer()).minimize(t, theta, optimizerOpts);
+				System.out.println("res: "+res.didConverge + "| "+res.minObjVal);
+				theta = res.minArg;
+			}else{
+				QNMinimizer qn = new QNMinimizer() ;
+			    qn.terminateOnMaxItr(batch_iterations);
+				theta = qn.minimize(t, 1e-4, theta);
+			}
+			System.out.println("Paramters for batchjob optimized, iteration: "+i+" completed");	
+
 			//Storing paramters to start from this iteration again:
-			Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");		
+			if (i==5 || i%10==0) {
+				Nd4j.writeTxt( u.convertDoubleArrayToFlattenedINDArray(theta), theta_save_path+"//theta_opt_iteration_"+i+".txt", ",");	
+			}
+				
 		}		
 		// save optimized theta paramters
 		Nd4j.writeTxt(u.convertDoubleArrayToFlattenedINDArray(theta) , theta_save_path+"//theta_opt"+Calendar.getInstance().get(Calendar.DATE)+".txt", ",");
 		System.out.println("Model saved!");
-		
+
 		//Test
+		System.out.println("Accuracy Test starting with "+theta_load_path);
 		// Load test data to calculate predictions
 		INDArray best_theresholds = t.computeBestThresholds(u.convertDoubleArrayToFlattenedINDArray(theta), tbj.getDevTripples());
 		System.out.println("Best theresholds: "+best_theresholds);
